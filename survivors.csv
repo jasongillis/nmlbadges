@@ -1,0 +1,53 @@
+Person,Class,Hero,Lvl,Stars,Weapon,Weapon Mod,Weapon Crit Mod,Weapon Charge Mod,Armor Charge Mod,Armor Crit Mod,Trait1,Trait2,Trait3,Trait4,Trait5
+Abraham,Assault,X,32,8.2,5584,,,,,,Abraham,Iron Skin,Marksman,Dodge,Defensive Stance
+Rosita,Assault,X,30,8.0,5584,,,,,,Rosita,Marksman,Retaliate,Sure Shot,BulletDodge
+Rufus,Assault,X,30,6.5,6639,,,,,,Rufus,Bullet Dodge,Sure Shot,Iron Skin,Defensive Stance
+Governor,Assault,X,32,7.0,7286,,,,,,Governor,Marksman,Sure Shot,Iron Skin,Lucky
+Dale,Assault,,30,9.1,3950,,,,,,Dodge,Marksman,Lucky,Defensive Stance,Iron Skin
+Princess,Assault,X,31,8.1,5155,,,,,,Princess,Marksman,Iron Skin,Retaliate,Dodge
+Mercer,Assault,X,32,8.0,8663,0.1,,,0.3,,Mercer,Sure Shot,Marksman,Ruthless,Lucky
+Simon,Assault,X,32,5.0,5155,,,,,,Simon,Iron Skin,Marksman,Dodge,Defensive Stance
+Daryl,Hunter,X,32,8.0,4696,,,,,,Daryl,Marksman,Retaliate,Dodge,Defensive Stance
+Dwight,Hunter,X,30,7.1,6639,,,,,,Dwight,Lucky,IronSkin,BulletDodge,Retaliate
+Sniper Morgan,Hunter,X,30,5.5,9703,,,,,,Sniper Morgan,Ruthless,Sure Shot,Vigilant,Revenge
+Maggie,Hunter,X,30,7.1,7660,,,,,,Maggie,Vigilant,Marksman,Sure Shot,Lucky
+Sasha,Hunter,X,32,9.3,10829,,,,0.3,,Sasha,Marksman,Ruthless,Critical Aim,Lucky
+Alpha,Hunter,X,31,7.3,6639,,,,,,Alpha,Ruthless,Lucky,Marksman,Critical Aim
+Shane,Hunter,X,30,6.4,5584,,,,,,Shane,Sure Shot,Marksman,Revenge,Ruthless
+Norman,Hunter,,32,10.2,7893,,,,,,Marksman,Lucky,Ruthless,Retaliate,Iron Skin
+Carol,Hunter,X,30,8.0,6639,,,,,,Carol,Revenge,Lucky,Sure Shot,Critical Aim
+CarolH,Hunter,,30,6.0,4696,,,,,,Dodge,Marksman,Sure Shot,Iron Skin,Lucky
+Hershel,Hunter,X,31,5.3,8500,,,,,,Hershel,Marksman,Ruthless,Revenge,Critical Aim
+Jadis,Hunter,X,31,6.4,6639,,,,,,Jadis,Ruthless,Sure Shot,Vigilant,Revenge
+Rick,Shooter,X,30,7.2,9703,,,,,,Rick,Vigilant,Marksman,Lucky,Retaliate
+Aaron,Shooter,X,32,7.2,17327,,,,0.3,,Aaron,Ruthless,Lucky,Sure Shot,Marksman
+Tara,Shooter,X,30,7.3,9703,,,,,,Tara,Marksman,Vigilant,Ruthless,Lucky
+Carl,Shooter,X,32,7.0,13717,,,,,,Carl,Marksman,Lucky,Sure Shot,Defensive Stance
+Merle,Shooter,X,30,6.3,8162,,,,,,Merle,Revenge,Retaliate,Marksman,IronSkin
+Hilltop Maggie,Shooter,X,31,7.3,6864,,,,,,Hilltop Maggie,Revenge,Sure Shot,Lucky,Ruthless
+Walter,Shooter,,30,10.3,8162,,,,,,Lucky,Iron Skin,Critical Aim,Dodge,Marksman
+Yumiko,Shooter,X,32,9.0,13717,0.15,0.4,,0.3,,Yumiko,Marksman,Ruthless,Critical Aim,Lucky
+Quinn,Shooter,X,31,6.0,14572,,,,,,Quinn,Dodge,Marksman,Retaliate,Ruthless
+Carol,Scout,X,31,6.5,8162,,,,,,Carol,Retaliate,BulletDodge,Iron Skin,Strong
+Glenn,Scout,X,32,7.2,8162,,,,,,Glenn,Lucky,Dodge,BulletDodge,Retaliate
+Gabriel,Scout,X,32,6.2,8162,,,,,,Gabriel,Retaliate,IronSkin,PowerStrike,Dodge
+Survivalist Rick,Scout,X,30,7.0,10214,,,,,,Survivalist Rick,Strong,Lucky,PowerStrike,Ruthless
+Beth,Scout,X,30,6.0,7767,,,,,,Beth,Power Strike,Follow Through,Iron Skin,Ruthless
+Huntsman Daryl,Scout,X,30,7.4,9236,,,,,,Huntsman Daryl,Power Strike,Ruthless,Retaliate,Lucky
+Connie,Scout,X,31,8.2,13717,,0.6,,0.3,,Connie,Lucky,Power Strike,Ruthless,Weakening
+Outlaw Negan,Scout,X,30,8.0,13054,,,,,,Negan,Perseverance,Lucky,Retaliate,Ruthless
+Michonne,Warrior,X,32,7.4,4254,,,,,,Michonne,Power Strike,Retaliate,Strong,Ruthless
+Jesus,Warrior,X,31,7.5,7149,,,,,,Jesus,Power Strike,Retaliate,Lucky,Bullet Dodge
+Jerry,Warrior,X,30,6.3,9703,,,,,,Jerry,Retaliate,Ruthless,Strong,Bullet Dodge
+Ezekiel,Warrior,X,30,7.1,10107,0.1,0.6,,0.3,,Ezekiel,Power Strike,Lucky,Ruthless,Strong
+Beta,Warrior,X,30,6.4,6014,,,,,,Beta,Ruthless,IronSkin,PowerStrike,Strong
+Will,Warrior,,30,9.0,7149,,,,,,Lucky,Strong,Dodge,Defensive Stance,Ruthless
+Tyreese,Warrior,X,32,7.0,10830,0.1,0.6,,,,Tyreese,Strong,Lucky,Ruthless,Power Strike
+Magna,Warrior,X,30,6.5,7149,,,,,,Magna,Strong,Follow Through,Ruthless,Perseverance
+Morgan,Bruiser,X,32,8.1,7286,,,,,,Morgan,IronSkin,Defensive Stance,Vigilant,Dodge
+Riot Gear Glenn,Bruiser,X,32,6.1,5780,,,,,,Riot Gear Glenn,Retaliate,Strong,Power Strike,Punish
+Negan,Bruiser,X,32,7.2,6128,,,,,,Negan,Retaliate,Strong,Iron Skin,Power Strike
+Eugene,Bruiser,X,32,8.1,11551,,,,,,Eugene,Strong,Power Strike,Retaliate,IronSkin
+T Dog,Bruiser,X,30,5.5,6128,,,,,,T Dog,Strong,Dodge,Iron Skin,IronSkin
+Fighter Rosita,Bruiser,X,30,7.4,6128,,,,,,Fighter Rosita,Retaliate,Strong,Lucky,Punish
+Protector Daryl,Bruiser,X,32,6.0,6128,,,,,,Daryl,Strong,Ruthless,Power Strike,Retaliate
