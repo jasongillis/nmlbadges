@@ -13,6 +13,55 @@ from itertools import combinations
 from argparse import ArgumentParser
 
 
+chars = {
+    'Yumiko': { 'teammates': ['Assault', 'Scout'],
+                'types': ['D', 'CD'],
+                'class': 'Shooter' },
+    'Mercer': { 'teammates': ['Shooter', 'Scout'],
+                'types': ['D', 'CD'],
+                'class': 'Assault' },
+    'Connie': { 'teammates': ['Assault', 'Shooter', 'Yumiko', 'Mercer' ],
+                'types': ['D', 'CD'],
+                'class': 'Scout' },
+    'Sasha': { 'teammates': ['Shooter', 'Assault'],
+               'types': ['D', 'CD'],
+               'class': 'Hunter' },
+    'Ezekiel': { 'teammates': ['Assault', 'Scout', 'Mercer', 'Connie'],
+                 'types': ['D', 'CD'],
+                 'class': 'Warrior' },
+    'Tyreese': { 'teammates': ['Warrior', 'Scout', 'Ezekiel', 'Connie'],
+                 'types': ['D', 'CD'],
+                 'class': 'Warrior' },
+    'Aaron': { 'teammates': ['Hunter', 'Shooter'],
+               'types': ['D', 'CD'],
+               'class': 'Shooter' },
+    'Fighter Rosita': { 'teammates': ['Bruiser', 'Morgan', 'Protector Daryl'],
+                        'types': ['H', 'DR'],
+                        'class': 'Bruiser'},
+    'Morgan': { 'teammates': ['Bruiser', 'Bruiser', 'Fighter Rosita', 'Protector Daryl'],
+                'types': ['H', 'DR'],
+                'class': 'Bruiser'},
+    'Protector Daryl': { 'teammates': ['Bruiser', 'Morgan', 'Fighter Rosita'],
+                         'types': ['H', 'DR'],
+                         'class': 'Bruiser' },
+    'Daryl': { 'teammates': ['Shooter', 'Hunter'],
+               'types': ['DR', 'D'],
+               'class': 'Hunter' },
+    'CarolH': { 'teammates': ['Shooter', 'Hunter'],
+                'types': ['CC', 'CD'],
+                'class': 'Hunter' },
+    'Carl': { 'teammates': ['Hunter', 'Hunter'],
+              'types': ['DR', 'H'],
+              'class': 'Shooter' },
+    'Norman': { 'teammates': ['Hunter', 'Bruiser'],
+                'types': ['D', 'CD'],
+                'class': 'Hunter' },
+    'Maggie': { 'teammates': ['Shooter', 'Hunter'],
+                'types': ['CD', 'CC'],
+                'class': 'Shooter' },
+}
+
+
 # Data from https://twdnml.fandom.com/wiki/Survivor_Stats
 # OCR'd by https://www.newocr.com/
 hero_boosts = {
@@ -604,32 +653,31 @@ class Character:
     def get_damage(self, weapon_boost: float = 1.0) -> int:
         # print(f'Survivor Level:  {self.character_details["Level"]}')
         class_base = base_details[self.survivor_class]['Damage'][self.character_details['Level']]
-        print(f'Class base = {class_base}')
+        # print(f'Class base = {class_base}')
 
         base_level = int(self.character_details['Stars'][0])
         if base_level <= 5:
             stars_modifier = base_level * 0.10 - 0.10
         else:
             stars_modifier = 0.4 + (base_level - 5) * 0.05
-        print(f'Stars mod = {stars_modifier}')
+        #print(f'Stars mod = {stars_modifier}')
 
         if self.name in hero_boosts:
             hero_boost = hero_boosts[self.name]['Damage']
         else:
             hero_boost = 0.0
-        print(f'Hero boost = {hero_boost}')
+        #print(f'Hero boost = {hero_boost}')
 
-        print(f'final base damage = {class_base * (1 + hero_boost + stars_modifier)}')
+        #print(f'final base damage = {class_base * (1 + hero_boost + stars_modifier)}')
 
         trait_bsts = self.get_trait_boost('Damage')
-        print(f'Damage trait boost:  {trait_bsts}')
-
+        #print(f'Damage trait boost:  {trait_bsts}')
 
         # base_damage = math.floor(class_base * ( 1.0 + hero_boost + stars_modifier))
         base_damage = class_base * ( 1.0 + hero_boost + stars_modifier)
         weapon_damage = self.weapon_damage * weapon_boost
 
-        print(f'Damage without badges should be: {(base_damage + weapon_damage) * (1 + trait_bsts)}')
+        #print(f'Damage without badges should be: {(base_damage + weapon_damage) * (1 + trait_bsts)}')
 
         damage_badges = self.get_badge_boost('D')
         # print(f'Damage Badges:  {damage_badges}')
@@ -1290,60 +1338,6 @@ def main():
 
     results: dict[str, BadgeSet] = {}
 
-    chars = {
-        'Yumiko': { 'teammates': ['Assault', 'Scout'],
-                    'types': ['D', 'CD'],
-                    'starting_bonus': { 'CC': 48 },
-                    'class': 'Shooter' },
-        'Mercer': { 'teammates': ['Shooter', 'Scout'],
-                    'types': ['D', 'CD'],
-                    'starting_bonus': { 'CC': 50 },
-                    'class': 'Assault' },
-        # 'Connie': { 'teammates': ['Assault', 'Shooter', 'Yumiko', 'Mercer' ],
-        #             'types': ['D', 'CD'],
-        #             'starting_bonus': { 'CC': 45 },
-        #             'class': 'Scout' },
-        # 'Sasha': { 'teammates': ['Shooter', 'Assault'],
-        #            'types': ['D', 'CD'],
-        #            'starting_bonus': { 'CC': 50 },
-        #            'class': 'Hunter' },
-        # 'Ezekiel': { 'teammates': ['Assault', 'Scout', 'Mercer', 'Connie'],
-        #              'types': ['D', 'CD'],
-        #              'class': 'Warrior'
-        #             },
-        # 'Tyreese': { 'teammates': ['Warrior', 'Scout', 'Ezekiel', 'Connie'],
-        #              'types': ['D', 'CD'],
-        #              'class': 'Warrior'
-        #             },
-        # 'Aaron': { 'teammates': ['Hunter', 'Shooter'],
-        #            'types': ['D', 'CD'],
-        #            'starting_bonus': { 'CC': 45 },
-        #            'class': 'Shooter' },
-        # 'Fighter Rosita': { 'teammates': ['Bruiser', 'Morgan', 'Protector Daryl'],
-        #             'types': ['H', 'DR'],
-        #             'class': 'Bruiser'},
-        # 'Morgan': { 'teammates': ['Bruiser', 'Bruiser', 'Fighter Rosita', 'Protector Daryl'],
-        #             'types': ['H', 'DR'],
-        #             'class': 'Bruiser'},
-        # 'Protector Daryl': { 'teammates': ['Bruiser', 'Morgan', 'Fighter Rosita'],
-        #            'types': ['H', 'DR'],
-        #            'class': 'Bruiser' },
-        # 'Daryl': { 'teammates': ['Shooter', 'Hunter'],
-        #            'types': ['DR', 'D'],
-        #            'class': 'Hunter' },
-        # 'CarolH': { 'teammates': ['Shooter', 'Hunter'],
-        #             'types': ['CC', 'CD'],
-        #             'class': 'Hunter' },
-        # 'Carl': { 'teammates': ['Hunter', 'Hunter'],
-        #           'types': ['DR', 'H'],
-        #           'class': 'Shooter' },
-        # 'Norman': { 'teammates': ['Hunter', 'Bruiser'],
-        #             'types': ['D', 'CD'],
-        #             'class': 'Hunter' },
-        # 'Maggie': { 'teammates': ['Shooter', 'Hunter'],
-        #             'types': ['CD', 'CC'],
-        #             'class': 'Shooter' },
-    }
 
     built_chars = {}
 
