@@ -3,13 +3,17 @@
 from typing import Any
 import os
 import csv
-import pprint
+from pprint import pprint
 import math
+import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
+from itertools import combinations
 from argparse import ArgumentParser
 
 
-# Data fromhttps://twdnml.fandom.com/wiki/Survivor_Stats
+# Data from https://twdnml.fandom.com/wiki/Survivor_Stats
 # OCR'd by https://www.newocr.com/
 hero_boosts = {
     "Aaron":            { "Damage": 0.10, "Health": 0.10 },
@@ -40,6 +44,7 @@ hero_boosts = {
     "Michonne":         { "Damage": 0.30, "Health": 0.15 },
     "Morgan":           { "Damage": 0.30, "Health": 0.15 },
     "Negan":            { "Damage": 0.30, "Health": 0.10 },
+    "Outlaw Negan":     { "Damage": 0.33, "Health": 0.33 },
     "Princess":         { "Damage": 0.15, "Health": 0.10 },
     "Rick":             { "Damage": 0.20, "Health": 0.20 },
     "Riot Gear Glenn":  { "Damage": 0.33, "Health": 0.33 },
@@ -198,7 +203,7 @@ base_details = {
         "Damage": [0, 43, 50, 57, 65, 76, 87, 99, 114, 132, 151, 173,
                    199, 229, 264, 303, 348, 400, 460, 530, 608, 723,
                    860, 1022, 1216, 1445, 1718, 2043, 2429, 2888,
-                   3434, 4083, 4854, 9772, 6862, 8159, 9701, 11535,
+                   3434, 4083, 4854, 5772, 6862, 8159, 9701, 11535,
                    13715, 16307, 19389, 23053, 27410, 32591, 38750,
                    46074, 54782, 65135, 77446, 92083, 109487],
         "Health": [0, 93, 105, 117, 130, 147, 164, 184, 205, 230, 258,
@@ -234,18 +239,27 @@ class_critical_boost = {
     'Shooter': 0.50
 }
 
+class_charge_weapon_boost = {
+    'Assault': 1.0,
+    'Bruiser': 1.4,
+    'Scout': 1.2,
+    'Hunter': 1.0,
+    'Warrior': 1.0,
+    'Shooter': 1.2,
+}
+
 class Badge:
-    set: str
-    slot: int
-    type: str
-    raw_increase: int
-    pct_increase: int
-    stars: int
-    raw_bonus: int
-    pct_bonus: int
-    bonus_type: str
-    bonus_target: str
-    pct_actual_bonus: int
+    set: str = ''
+    slot: int = 0
+    type: str = ''
+    raw_increase: int = 0
+    pct_increase: int = 0
+    stars: int = 0
+    raw_bonus: int = 0
+    pct_bonus: int = 0
+    bonus_type: str = ''
+    bonus_target: str = ''
+    pct_actual_bonus: int = 0
 
     def __init__(self, row: dict[str, str]):
         self.set = row['Set']
@@ -259,9 +273,61 @@ class Badge:
         self.bonus_type = row['Bonus Type']
         self.bonus_target = row['Bonus Target']
 
+        self.unmark()
+
+
+    def mark(self,
+             bonus_set: str,
+             slot: str,
+             slot_count: int,
+             bonus_targets: list[str],
+             reroll_set: bool = True,
+             reroll_slot: bool = True,
+             reroll_bonus: bool = True):
+        """Mark the items in the badge that need to be rerolled"""
+        if self.set != bonus_set:
+            if reroll_set:
+                self.reroll_set_mark = '^'
+            else:
+                self.reroll_set_mark = '+'
+        else:
+            self.reroll_set_mark = ' '
+
+        if self.slot != slot or slot_count > 1:
+            if reroll_slot:
+                self.reroll_slot_mark = '^'
+            else:
+                self.reroll_slot_mark = '+'
+        else:
+            self.reroll_slot_mark = ' '
+
+        if self.bonus_target not in bonus_targets:
+            if reroll_bonus:
+                self.reroll_bonus_mark = '^'
+            else:
+                self.reroll_bonus_mark = '+'
+        else:
+            self.reroll_bonus_mark = ' '
+
+    def unmark(self):
+        """Remove marks from the badge set"""
+        self.reroll_set_mark = ' '
+        self.reroll_slot_mark = ' '
+        self.reroll_bonus_mark = ' '
+
+
     def __str__(self):
-        return '{{ {}-{}-{:<2} {:<5} Inc %: {:<2} Bon %: {:<2} Bon Type: {:<5} Bon Tgt: {:<10} Act Incr: {}}}'.format(
-            self.set, self.slot, self.type, "*" * self.stars, self.pct_increase, self.pct_bonus, self.bonus_type, self.bonus_target, self.pct_actual_bonus)
+        return ' {}{} -{}{} - {:<2} {:<5} Inc %: {:<2} Bon %: {:<2} Bon Type: {:<5} Bon Tgt: {}{:<10.10} Act Incr: {}'.format(
+            self.reroll_set_mark, self.set,
+            self.reroll_slot_mark, self.slot,
+            self.type, "*" * self.stars, self.pct_increase,
+            self.pct_bonus, self.bonus_type,
+            self.reroll_bonus_mark, self.bonus_target,
+            self.pct_actual_bonus)
+
+    def short_str(self):
+        return ' {}{}{}{}-{:<2}-{}{}{}'.format(
+            self.stars, self.set, self.slot, self.type, self.pct_increase, self.pct_bonus, self.bonus_target, self.pct_actual_bonus)
 
     def __repr__(self):
         return self.__str__()
@@ -285,72 +351,212 @@ class Badge:
         return not self.__eq__(other)
 
 class BadgeSet:
-    badges: list[Badge]
     set_counts: dict[str, int]
     type_counts: dict[str, int]
-    type_increases: dict[str, float]
     reroll_set: bool = False
+    reroll_slot: bool = False
+    reroll_bonus: bool = False
 
     def __init__(self,
                  badges: list[Badge],
+                 bonus_targets: list[str],
                  reroll_set: bool = False,
                  reroll_slot: bool = False,
                  reroll_bonus: bool = False):
-        self.init_structs()
-        self.badges = badges
+
+        self.slots: dict[int, list[Badge]] = {
+            1: [], 2: [], 3: [], 4: [], 5: [], 6: []
+        }
 
         self.reroll_set = reroll_set
         self.reroll_slot = reroll_slot
         self.reroll_bonus = reroll_bonus
 
-        for badge in self.badges:
-            self.set_counts[badge.set] += 1
-            self.type_counts[badge.type] += 1
-        self.compute_increases()
+        self.bonus_targets = bonus_targets
 
-    def init_structs(self):
-        self.set_counts = { 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0 }
-        self.type_increases = { 'H': 0.0, 'D': 0.0, 'CC': 0.0, 'CD': 0.0, 'DR': 0.0 }
-        self.type_counts = { 'H': 0, 'D': 0, 'CC': 0, 'CD': 0, 'DR': 0 }
+        for badge in badges:
+            self.add_badge(badge)
 
-    def reset_increases(self):
-        for increase in self.type_increases:
-            self.type_increases[increase] = 0.0
+        self.mark_badges()
 
-    def compute_increases(self):
-        self.reset_increases()
-        for badge in self.badges:
-            incr: float = float(badge.pct_actual_bonus)
 
-            if self.reroll_set or self.set_counts[badge.set] >= 4:
-                incr *= 1.2
+    def mark_badges(self):
+        """Mark items in each badge in the set that need to be rerolled
+        for maximum effect."""
+        for slot in range(1,7):
+            for badge in self.slots[slot]:
+                badge.mark(self.most_set(),
+                           slot,
+                           len(self.slots[slot]),
+                           self.bonus_targets,
+                           reroll_set=self.reroll_set,
+                           reroll_slot=self.reroll_slot,
+                           reroll_bonus=self.reroll_bonus)
 
-            self.type_increases[badge.type] += incr
+    def badge_count(self) -> int:
+        """Return the number of badges in the set"""
+        count = 0
 
-    def has_set_bonus(self, set: str) -> bool:
-        if self.reroll_set:
-            return True
+        for slot in range(1,7):
+            count += len(self.slots[slot])
 
-        if self.set_counts[set] >= 4:
-            return True
-        else:
+        return count
+
+    def badges(self) -> list[Badge]:
+        """Return the badges in the set as a list"""
+        badges: list[Badge] = []
+
+        for slot in range(1,7):
+            for badge in self.slots[slot]:
+                badges.append(badge)
+
+        return badges
+
+    def bonus_set(self) -> str:
+        """Return the set that has bonus enabled"""
+        set_counts = { 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0 }
+        for slot in range(1,7):
+            for badge in self.slots[slot]:
+                set_counts[badge.set] += 1
+
+        for set_name in ['A', 'B', 'C', 'D', 'E']:
+            if set_counts[set_name] >= 4:
+                return set_name
+
+        return ''
+
+    def most_set(self) -> str:
+        """Return the set that has bonus enabled"""
+        set_counts = { 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0 }
+        for slot in range(1,7):
+            for badge in self.slots[slot]:
+                set_counts[badge.set] += 1
+
+        biggest_set = ''
+        biggest_set_count = 0
+        for set_name in ['A', 'B', 'C', 'D', 'E']:
+            if set_counts[set_name] > biggest_set_count:
+                biggest_set = set_name
+                biggest_set_count = set_counts[set_name]
+            # if set_counts[set_name] >= 4:
+            #     return set
+
+        return biggest_set
+
+    def reroll_count(self) -> str:
+        """Determine the number of rerolls required for this set to
+        achieve maximum effect"""
+        reroll_count = 0
+        most_set = self.most_set()
+        slot_counts = { i: 0 for i in range(1,7) }
+        for slot in range(1, 7):
+            for badge in self.slots[slot]:
+                slot_counts[badge.slot] += 1
+                if most_set != badge.set:
+                    reroll_count += 1
+                if badge.bonus_target not in self.bonus_targets:
+                    reroll_count += 1
+
+        # pprint(slot_counts)
+        for slot in slot_counts:
+            if slot_counts[slot] == 0: reroll_count += 1
+
+        return reroll_count
+
+    def types(self) -> list[str]:
+        """Return a list of badge types in this badge set"""
+        types: set[str] = set([])
+
+        for slot in range(1,7):
+            for badge in self.slots[slot]:
+                types.add(badge.type)
+
+        return list(types)
+
+    def type_count(self, type: str) -> int:
+        """Return the number of badges for the specified type"""
+        count: int = 0
+
+        for slot in range(1,7):
+            for badge in self.slots[slot]:
+                if badge.type == type: count += 1
+
+        return count
+
+    def add_badge(self, badge: Badge) -> bool:
+        """Try to add a badge to the set.  Returns false if the badge
+        cannot be added."""
+
+        # If slot re-rolling isn't allowed and there's already a badge
+        # in the slot, then can't add.
+        # Set rerolling and bonus rerolling don't affect badge addition
+        if not self.reroll_slot and len(self.slots[badge.slot]) != 0:
             return False
 
-    @property
-    def improvement(self):
-        self.compute_increases()
-        return sum(self.type_increases.values())
+        # Only 3 badges of each type are allowed
+        if self.type_count(badge.type) < 3:
+            self.slots[badge.slot].append(badge)
+            return True
+
+        return False
+
+    def type_increase(self, type: str) -> float:
+        """Compute and return the total increase for the specified
+        badge type"""
+        increase_pct: float = 0.0
+        bonus_set: str = self.bonus_set()
+
+        for slot in range(1,7):
+            for badge in self.slots[slot]:
+                if badge.type == type:
+                    badge_increase: float = badge.pct_increase
+                    if (badge.bonus_target in self.bonus_targets or
+                        self.reroll_bonus):
+                        badge_increase += badge.pct_bonus
+                    if badge.set == bonus_set:
+                        badge_increase *= 1.2
+                    increase_pct += badge_increase
+
+        return increase_pct
+
+    def improvement(self) -> float:
+        """Determine the total improvement for this set over the base
+        survivor details"""
+        improvement = 0.0
+        for type in ['D', 'CD', 'CC', 'H', 'DR']:
+            improvement += self.type_increase(type)
+        return improvement
+
+    def print_stat_block(self,
+                         damage: int,
+                         crit_damage: int,
+                         charge_damage: int):
+        output = f'{self}'
+        output += '-------------------------------------------------------------------------------------------\n'
+
+        improvement: float = 0.0
+
+        damage_strs = [
+            f'               |  {damage: >7d} - New damage',
+            f'               |  {crit_damage: >7d} - New critical damage',
+            f'               |  {charge_damage: >7d} - New charge damage'
+        ]
+
+        for i, type in enumerate(sorted(self.types(), reverse=True)):
+            type_incr = self.type_increase(type)
+            output += f'   {type_incr: 4.1f} increase for {type: <2}      {damage_strs[i]}\n'
+            improvement += type_incr
+        output += f'  ---------------             {damage_strs[2]}\n'
+        output += f'   {improvement:>4.1f} total improvement (with {self.reroll_count(): >2} rerolls) |'
+        return output
 
     def __str__(self):
-        output: str = f'Reroll Set = {self.reroll_set} | Reroll Slot = {self.reroll_slot} | Reroll Bonus = {self.reroll_bonus}\n'
-        for badge in self.badges:
-            output += ' {},\n'.format(badge)
-        output += '\n'
-        for type in self.type_increases:
-            if self.type_increases[type] != 0.0:
-                output += f' - {type} has total increase of {self.type_increases[type]:.1f}\n'
-        output += '========================\n'
-        output += f'{self.improvement:.1f} total improvement'
+        output = ( f'          ' +
+                   f'Reroll Set = {self.reroll_set} | ' +
+                   f'Reroll Slot = {self.reroll_slot} | ' +
+                   f'Reroll Bonus = {self.reroll_bonus}\n' )
+        for badge in self.badges():
+            output += ' {}\n'.format(badge)
         return output
 
 class Character:
@@ -358,8 +564,7 @@ class Character:
     teammates: list[str]
     badge_types: list[str]
     available_badges: list[Badge]
-    computed_badges: list[Badge]
-    type_focus: str
+    badge_set: BadgeSet
 
     def __init__(self,
                  name,
@@ -367,23 +572,26 @@ class Character:
                  character_details: dict[str, Any],
                  teammates: list[str] = [],
                  badge_types: list[str] = [],
-                 badges: list[Badge] = [],
-                 type_focus: str = ''):
+                 # badges: list[Badge] = [],
+                 threads: int = 10,
+                 max_rerolls: int = 4):
         self.name = name
         self.survivor_class = survivor_class
         self.teammates = teammates
         self.badge_types = badge_types
-        self.available_badges = badges.copy()
-        self.type_focus = type_focus
+        # self.available_badges = badges.copy()
         self.character_details = character_details
+        self.traits = character_details['Traits']
+        self.bonus_targets = self.traits + self.teammates
         self.chosen_set = []
         self.damage = 0
-
+        self.badge_set = None
+        self.weapon_damage = character_details['Weapon Damage']
         self.reroll_slot = False
         self.reroll_set = False
         self.reroll_bonus = False
 
-        self.compute_actual_bonus()
+        self.max_rerolls = max_rerolls
 
     def set_restrictions(self,
                          reroll_slot: bool = False,
@@ -393,38 +601,48 @@ class Character:
         self.reroll_set = reroll_set
         self.reroll_bonus = reroll_bonus
 
-        self.compute_actual_bonus()
-
-
-    def get_damage(self) -> float:
+    def get_damage(self, weapon_boost: float = 1.0) -> int:
         # print(f'Survivor Level:  {self.character_details["Level"]}')
         class_base = base_details[self.survivor_class]['Damage'][self.character_details['Level']]
-        if self.name in hero_boosts:
-            hero_boost = hero_boosts[self.name]['Damage']
-        else:
-            hero_boost = 0.0
-
-        trait_bsts = self.get_trait_boost('Damage')
+        print(f'Class base = {class_base}')
 
         base_level = int(self.character_details['Stars'][0])
-
         if base_level <= 5:
             stars_modifier = base_level * 0.10 - 0.10
         else:
             stars_modifier = 0.4 + (base_level - 5) * 0.05
+        print(f'Stars mod = {stars_modifier}')
 
-        base_damage = math.floor(class_base * ( 1.0 + hero_boost + stars_modifier))
-        weapon_damage = 13717.0
+        if self.name in hero_boosts:
+            hero_boost = hero_boosts[self.name]['Damage']
+        else:
+            hero_boost = 0.0
+        print(f'Hero boost = {hero_boost}')
+
+        print(f'final base damage = {class_base * (1 + hero_boost + stars_modifier)}')
+
+        trait_bsts = self.get_trait_boost('Damage')
+        print(f'Damage trait boost:  {trait_bsts}')
+
+
+        # base_damage = math.floor(class_base * ( 1.0 + hero_boost + stars_modifier))
+        base_damage = class_base * ( 1.0 + hero_boost + stars_modifier)
+        weapon_damage = self.weapon_damage * weapon_boost
+
+        print(f'Damage without badges should be: {(base_damage + weapon_damage) * (1 + trait_bsts)}')
 
         damage_badges = self.get_badge_boost('D')
         # print(f'Damage Badges:  {damage_badges}')
         # print(f'Damage Badges same set: {damage_badges * 1.2}')
 
-        self.damage = math.floor( (base_damage + weapon_damage) * (1.0 + trait_bsts) * (1.0 + damage_badges) )
+        self.damage = math.floor( (base_damage + weapon_damage) *
+                                  (1.0 + trait_bsts) *
+                                  (1.0 + damage_badges) )
 
-        return self.damage
+        return int(self.damage)
 
-    def get_trait_boost(self, type: str):
+    def get_trait_boost(self, type: str) -> float:
+        """Get the boost for the provided damage type due to traits."""
         traits = self.character_details['Traits'][::-1]
         # print(f'Stars - {self.character_details["Stars"]}')
         base_level = int(self.character_details['Stars'][0])
@@ -440,116 +658,58 @@ class Character:
             ramped_levels -= 1
 
             if trait in trait_boosts and trait_boosts[trait]['type'] == type:
-                # print(f'Adding {trait_boosts[trait]["values"][base_level - level_delta - 1]} for {trait} @ {base_level - level_delta - 1}')
                 trait_bsts += trait_boosts[trait]['values'][base_level - level_delta - 1]
 
         return trait_bsts
 
-    def get_badge_boost(self, type: str):
-        traits = self.character_details['Traits'][::-1]
+    def get_badge_boost(self, type: str) -> float:
+        traits = self.bonus_targets
         badge_boost = 0.0
-        for badge in self.chosen_set.badges:
+        for badge in self.badge_set.badges():
             if badge.type == type:
-                # print(f' -- Adding base pct increase of {badge.pct_increase / 100.0}')
-                badge_boost += ((badge.pct_increase / 100.0) * (1.2 if self.chosen_set.has_set_bonus(badge.set) else 1.0))
-                if badge.bonus_type == 'Trait' and badge.bonus_target in traits:
-                    # print(f' -- Adding bonus of {badge.pct_bonus / 100.0} due to {badge.bonus_target}')
-                    badge_boost += ((badge.pct_bonus / 100.0) * (1.2 if self.chosen_set.has_set_bonus(badge.set) else 1.0))
-                if badge.bonus_type == 'Role' and badge.bonus_target in self.teammates:
-                    # print(f' -- Adding bonus of {badge.pct_bonus / 100.0} due to {badge.bonus_target}')
-                    badge_boost += ((badge.pct_bonus / 100.0) * (1.2 if self.chosen_set.has_set_bonus(badge.set) else 1.0))
-            # print(f' -- badge_boost now {badge_boost}')
+                bonus_set_mult = 1.0
+                if self.badge_set.bonus_set() == badge.set:
+                    bonus_set_mult = 1.2
+
+                increase = badge.pct_increase
+                if badge.bonus_target in self.bonus_targets:
+                    increase += badge.pct_bonus
+
+                badge_boost += ((increase / 100.0) * bonus_set_mult)
         return badge_boost
 
-    def get_critical_damage(self):
+    def get_critical_damage(self, weapon_boost: float = 1.0) -> int:
         class_crit_boost = class_critical_boost[self.survivor_class]
 
         trait_bsts = self.get_trait_boost('Critical Damage')
 
         critical_damage_badges = self.get_badge_boost('CD')
 
-        self.critical_damage = math.floor(self.damage * (1 + class_crit_boost + trait_bsts + critical_damage_badges))
-        # print(f'Crit Damage:  {self.damage} * (1 + {class_crit_boost} + {trait_bsts} + {damage_badges}) = {self.damage * (1 + class_crit_boost + trait_bsts + damage_badges)}')
-        return self.critical_damage
+        if self.damage == 0:
+            self.damage = self.get_damage(weapon_boost)
 
-    # def get_charge_damage(self):
-    #     class_chrg_boost = class_charge_boost[self.survivor_class]
+        crit_damage = (1 + class_crit_boost +
+                       trait_bsts + critical_damage_badges)
+        self.critical_damage = math.floor(self.damage * crit_damage)
 
-    #     trait_bsts = 0.0
+        return int(self.critical_damage)
 
-    #     for trait in traits:
-    #         if ramped_levels > 0:
-    #             level_delta = 1
-    #         else:
-    #             level_delta = 0
-    #         ramped_levels -= 1
+    def get_charge_damage(self) -> int:
+        class_chrg_boost = class_charge_weapon_boost[self.survivor_class]
 
-    #         if trait in trait_boosts and trait_boosts[trait]['type'] == 'Critical Damage':
-    #             print(f'Adding {trait_boosts[trait]["values"][base_level - level_delta - 1]} for {trait} @ {base_level - level_delta - 1}')
-    #             trait_bsts += trait_boosts[trait]['values'][base_level - level_delta - 1]
+        charge_weapon_boost = class_charge_weapon_boost[self.survivor_class]
+        charge_damage = self.get_critical_damage(charge_weapon_boost)
 
-    #     damage_badges = 0.0
-    #     for badge in self.chosen_set.badges:
-    #         if badge.type == 'D':
-    #             print(f' -- Adding base pct increase of {badge.pct_increase / 100.0}')
-    #             damage_badges += (badge.pct_increase / 100.0)
-    #             if badge.bonus_type == 'Trait' and badge.bonus_target in traits:
-    #                 print(f' -- Adding bonus of {badge.pct_bonus / 100.0} due to {badge.bonus_target}')
-    #                 damage_badges += (badge.pct_bonus / 100.0)
-    #             if badge.bonus_type == 'Role' and badge.bonus_target in self.teammates:
-    #                 print(f' -- Adding bonus of {badge.pct_bonus / 100.0} due to {badge.bonus_target}')
-    #                 damage_badges += (badge.pct_bonus / 100.0)
-    #         print(f' -- damage_badges now {damage_badges}')
+        if self.survivor_class in ['Shooter', 'Scout']:
+            charge_damage *= 1.5
 
-    #     print(f'Damage Badges:  {damage_badges}')
-    #     print(f'Damage Badges same set: {damage_badges * 1.2}')
-    #     damage_badges *= 1.2
+        trait_bsts = self.get_trait_boost('Charge Damage')
+        charge_damage *= (1.0 + trait_bsts)
 
-    #     self.critical_damage = self.damage * (1 + class_crit_boost + trait_bsts + damage_badges)
-    #     print(f'Crit Damage:  {self.damage} * (1 + {class_crit_boost} + {trait_bsts} + {damage_badges}) = {self.damage * (1 + class_crit_boost + trait_bsts + damage_badges)}')
-    #     return self.critical_damage
+        self.charge_damage = math.floor(charge_damage)
 
-    def compute_actual_bonus(self):
-        """Compute the actual increase based on the character's traits and the
-        roles of the teammates.  This computation is independent of whether
-        the badge is selected.  A set bonus could still apply to the badge."""
+        return int(self.charge_damage)
 
-        self.computed_badges = []
-
-        if len(self.teammates) == 0 or len(self.available_badges) == 0:
-            return
-
-        # For each available badge, compute the actual bonus
-        # percentage based on this survivor.  Copy the badge over to
-        # self.computed_badges.
-        for badge in self.available_badges:
-            if self.reroll_bonus:
-                badge.pct_actual_bonus = badge.pct_increase + badge.pct_bonus
-            else:
-                if badge.bonus_type == 'Trait':
-                    if badge.bonus_target in self.character_details['Traits']:
-                        if badge.pct_increase != '':
-                            badge.pct_actual_bonus = badge.pct_bonus + badge.pct_increase
-                        else:
-                            badge.pct_actual_bonus = 0
-                            # Don't take into account non % badges
-                            # badge['Actual Bonus'] = badge['Bonus'] + badge['Increase']
-                    else:
-                        badge.pct_actual_bonus = badge.pct_increase
-                elif badge.bonus_type == 'Role':
-                    if badge.bonus_target in self.teammates:
-                        if badge.pct_increase != '':
-                            badge.pct_actual_bonus = badge.pct_bonus + badge.pct_increase
-                        else:
-                            badge.pct_actual_bonus = 0
-                    else:
-                        badge.pct_actual_bonus = badge.pct_increase
-                else:
-                    badge.pct_actual_bonus = badge.pct_increase
-
-            self.computed_badges.append(badge)
-        self.computed_badges = sorted(self.computed_badges,
-                                      key=lambda b: b.pct_actual_bonus)
 
     def filter_badges_by_type(self,
                               badge_types: list[str],
@@ -563,22 +723,22 @@ class Character:
         return type_badges
 
     def filter_badges_by_set(self,
-                             set: str,
+                             set_names: list[str],
                              badges: list[Badge]) -> list[Badge]:
         """Filter the provided list of badges by the specified set."""
         set_badges: list[Badge] = []
         for badge in badges:
-            if badge.set == set:
+            if badge.set in set_names:
                 set_badges.append(badge)
         return set_badges
 
     def filter_badges_by_slot(self,
-                              slot: int,
+                              slots: list[int],
                               badges: list[Badge]) -> list[Badge]:
         """Filter the provided list of badges by the specified slot."""
         slot_badges: list[Badge] = []
         for badge in badges:
-            if badge.slot == slot:
+            if badge.slot in slots:
                 slot_badges.append(badge)
         return slot_badges
 
@@ -592,185 +752,449 @@ class Character:
                 trait_badges.append(badge)
         return trait_badges
 
-    # If self.reroll_slot is true, then there won't be a restriction to
-    # choose a badge that fits a slot.  The expectation is that the
-    # badge might need to be re-rolled for a better slot.
-    def find_best_badges(self,
-                         badges: list[Badge]) -> BadgeSet:
-        slots_used: list[int] = []
-        type_count: dict[str, int] = {}
-        selected_badges: list[Badge] = []
-        avail_badges: list[Badge] = self.computed_badges.copy()
+    def compute_actual_bonus(self, available_badges: list[Badge]):
+        """Compute the actual increase based on the character's traits and the
+        roles of the teammates.  This computation is independent of whether
+        the badge is selected.  A set bonus could still apply to the badge."""
+        if len(available_badges) == 0:
+            return
+        # For each available badge, compute the actual bonus
+        # percentage based on this survivor.
 
-        # Initialize the type counts
-        for type in self.badge_types:
-            type_count[type] = 0
+        for badge in available_badges:
+            if self.reroll_bonus:
+                badge.pct_actual_bonus = badge.pct_increase + badge.pct_bonus
+            else:
+                if badge.bonus_target in self.bonus_targets:
+                    if badge.pct_increase != '':
+                        badge.pct_actual_bonus = badge.pct_bonus + badge.pct_increase
+                    else:
+                        badge.pct_actual_bonus = (badge.raw_increase + badge.raw_bonus) / 1000.0
+                        # Don't take into account non % badges
+                        # badge['Actual Bonus'] = badge['Bonus'] + badge['Increase']
+                else:
+                    if badge.pct_increase != '':
+                        badge.pct_actual_bonus = badge.pct_increase
+                    else:
+                        badge.pct_actual_bonus = (badge.raw_increase) / 1000.0
 
-        # Sort the provided list of badges by the actual bonus pct
-        trait_badges = self.filter_badges_by_traits(self.character_details['Traits'], badges)
-        # print('Badge selection')
-        # pprint.pprint(trait_badges)
-        best = sorted(trait_badges,
-                      key=lambda d: d.pct_actual_bonus,
-                      reverse=True)
-        # print('Best selection')
-        # pprint.pprint(best)
+    # NEW METHOD
+    # A. For each set, do the following:
+    #   1. Generate set of badges based on a set (at least 4)
+    #   2. For the open 1 or 2 slots or the two slots that have the
+    #      lowest pct_actual_bonus, look at badges from other sets
+    #      (following reroll options) to replace or fill spots.
+    # B. Compare the damage and critical damage outputs on each set
+    #    to see which is better.
+    def find_best_badge_set(self,
+                            available_badges: list[Badge]) -> BadgeSet:
+        chosen_set: BadgeSet = None
+        best_improvement = 0.0
+        best_set = None
+        best_set_name = ''
+        similar_sets = 0
 
-        # if self.name == 'Connie':
-        #     pprint.pprint(best)
-        #     # pprint.pprint(self.filter_badges_by_traits(self.character_details['Traits'], self.computed_badges))
+        all_sets = ['A', 'B', 'C', 'D', 'E']
+        # all_sets = [ 'C', 'E' ]
+        rep_set = []
+        rep_value = 0
 
-        # get top three that don't overlap slot
-        for badge in best:
-            if self.reroll_slot or badge.slot not in slots_used:
-                if badge.type in self.badge_types and type_count[badge.type] < 3:
-                    type_count[badge.type] += 1
-                    slots_used.append(badge.slot)
-                    selected_badges.append(badge)
-                    avail_badges.remove(badge)
-                    badges.remove(badge)
-            if len(selected_badges) == (len(self.badge_types) * 3):
-                break
+        # Update the badges with the correct bonus increases for this
+        # survivor
+        self.compute_actual_bonus(available_badges)
 
-        # print('Selected so far:')
-        # pprint.pprint(selected_badges)
+        for set_name in all_sets:
+            new_value, new_set = self.build_badge_set(set_name,
+                                                      available_badges)
+            if new_set is None:
+                # print('new_set is None')
+                continue
 
-        # print("Selected badges length = {}".format(str(len(selected_badges))))
-        if len(selected_badges) != 6:
-            # print(selected_badges)
-            for slot in [1, 2, 3, 4, 5, 6]:
-                if self.reroll_slot or slot not in slots_used:
-                    needed: list[str] = []
-                    for type in type_count:
-                        if type_count[type] != 3 and type not in needed:
-                            needed.append(type)
-                    if len(needed) != 0:
-                        # new_badge = self.find_badge(slot, needed, self.computed_badges)
-                        new_badge = self.find_badge(slot, needed, badges)
-                        # print('New badge:  ', end='')
-                        # pprint.pprint(new_badge)
-                        if new_badge is None:
-                            new_badge = self.find_badge(slot, needed, avail_badges)
+            # If a set of badges was found that was less than 6
+            # badges, fill in the missing slots with other badges
+            if len(new_set) != 6:
+                # print(f'{set_name}:  new_set has {len(new_set)} badges')
+                types_needed = { i: 3 for i in self.badge_types }
+                slots_needed = { i: 1 for i in range(1,7) }
+                for badge in new_set:
+                    types_needed[badge.type] -= 1
+                    slots_needed[badge.slot] -= 1
 
-                        new_badge = self.find_better_badge(new_badge, avail_badges)
-                        type_count[new_badge.type] += 1
-                        slots_used.append(slot)
-                        selected_badges.append(new_badge)
-                        if new_badge in badges: badges.remove(new_badge)
-                        if new_badge in avail_badges: avail_badges.remove(new_badge)
+                type_list = [k for k, v in types_needed.items() if v > 0]
+                slot_list = [k for k, v in slots_needed.items() if v == 1]
+                set_names = [k for k in all_sets if k != set_name]
 
-        selected_badges = sorted(selected_badges, key=lambda d: d.slot)
-        # print('Selected badges:')
-        # pprint.pprint(selected_badges)
-        return BadgeSet(selected_badges, self.reroll_set, self.reroll_slot, self.reroll_bonus)
+                rep_value, rep_set = self.find_replacement_badges(types_needed,
+                                                                  slot_list,
+                                                                  set_names,
+                                                                  available_badges)
 
-    def find_better_badge(self,
-                          badge: Badge,
-                          avail_badges: list[Badge]) -> Badge:
-        """Given a specific badge, find out if there is a better badge
-        in avail_badges that is a close match."""
+                new_set = new_set + rep_set
+                new_value = new_value + rep_value
 
-        search_set = badge.set
-        search_bonus = badge.bonus_target
-        search_slot = badge.slot
+            new_bs = BadgeSet(new_set,
+                              self.bonus_targets,
+                              reroll_set=self.reroll_set,
+                              reroll_slot=self.reroll_slot,
+                              reroll_bonus=self.reroll_bonus)
+            new_bs_improvement = new_bs.improvement()
 
-        badges = self.filter_badges_by_type([ badge.type ],
-                                            avail_badges)
+            # Try replacing the "worst" two badges in the set to see
+            # if a better outcome is found.
+            sorted_set = sorted(new_set, key=lambda b: b.pct_actual_bonus)
+            types_needed = { i: 0 for i in self.badge_types }
+            slots_needed = set()
+            types_needed[sorted_set[0].type] += 1
+            slots_needed.add(sorted_set[0].slot)
+            types_needed[sorted_set[1].type] += 1
+            slots_needed.add(sorted_set[1].slot)
+            set_names = [k for k in all_sets if k != set_name]
+            adj_value = new_value - sorted_set[0].pct_actual_bonus - sorted_set[1].pct_actual_bonus
+            avail_badges = available_badges.copy()
+            for i in range(2,len(sorted_set) if len(sorted_set)<6 else 6):
+                avail_badges.remove(sorted_set[i])
+            # start_time = time.time()
+            rep_value, rep_set = self.find_replacement_badges(types_needed,
+                                                              list(slots_needed),
+                                                              set_names,
+                                                              avail_badges)
+            adj_set = new_set.copy()
+            adj_set.remove(sorted_set[0])
+            adj_set.remove(sorted_set[1])
+            adj_set += rep_set
+            adj_bs = BadgeSet(adj_set,
+                              self.bonus_targets,
+                              reroll_set=self.reroll_set,
+                              reroll_slot=self.reroll_slot,
+                              reroll_bonus=self.reroll_bonus)
+            adj_bs_improvement = adj_bs.improvement()
+
+            if new_bs_improvement < adj_bs_improvement:
+                new_bs = adj_bs
+                new_bs_improvement = adj_bs_improvement
+
+            new_set_rerolls = new_bs.reroll_count()
+            if ( (new_set_rerolls <= self.max_rerolls) or
+                 (best_set is None) ):
+                if new_bs_improvement > best_improvement:
+                    best_improvement = new_bs_improvement
+                    best_set = new_bs
+                    best_set_name = set_name
+                    similar_sets = 0
+                elif new_bs_improvement == best_improvement:
+                    # If there's fewer rerolls required for the new set,
+                    # pick it.
+                    if best_set.reroll_count() > new_set_rerolls:
+                        best_improvement = new_bs_improvement
+                        best_set = new_bs
+                        best_set_name = set_name
+                    similar_sets += 1
+
+        self.badge_set = best_set
+
+        if similar_sets != 0:
+            print(f'Found {similar_sets} other similar sets')
+
+        return self.badge_set
+
+    def find_replacement_badges(self,
+                                types_needed: dict[str, int],
+                                slots_needed: list[int],
+                                set_names: list[str],
+                                available_badges: list[Badge]) -> (int, list[Badge]):
+        badges = self.filter_badges_by_slot(slots_needed, available_badges)
+
+        badge_lists = { k: { 'badges': [], 'needed': v } for k, v in types_needed.items() if v != 0 }
+        for type in badge_lists:
+            badge_lists[type]['badges'] = self.filter_badges_by_type([type], badges)
+        type_list = [k for k, v in types_needed.items() if v > 0]
+
+        best_value = 0
+        best_set = []
+
+        first_max = badge_lists[type_list[0]]['needed'] + 1
+        for first_counter in range(1, first_max):
+            first_combinations = combinations(badge_lists[type_list[0]]['badges'],
+                                              first_counter)
+
+            for combo_first in first_combinations:
+                first_value = 0
+                first_occupancy = set()
+                first_valid = True
+
+                for badge in combo_first:
+                    if badge.slot in first_occupancy:
+                        first_valid = False
+                        break
+                    first_occupancy.add(badge.slot)
+                    first_value += badge.pct_actual_bonus
+
+                if len(type_list) == 2 and first_valid:
+                    second_value = 0
+                    second_valid = True
+                    second_combo = []
+
+                    second_max = badge_lists[type_list[1]]['needed'] + 1
+                    for second_counter in range(1, second_max):
+                        second_combinations = combinations(badge_lists[type_list[1]]['badges'],
+                                                           second_counter)
+                        for combo_second in second_combinations:
+                            second_value = 0
+                            second_occupancy = first_occupancy.copy()
+                            second_valid = True
+                            second_combo = []
+
+                            for badge in combo_second:
+                                if badge.slot in second_occupancy:
+                                    second_valid = False
+                                    break
+                                second_occupancy.add(badge.slot)
+                                second_value += badge.pct_actual_bonus
+
+                            if second_valid:
+                                second_combo = combo_second
+
+                    if ( first_valid and second_valid and
+                         (first_value + second_value) > best_value ):
+                        best_value = first_value + second_value
+                        best_set = list(combo_first) + list(second_combo)
+                else:
+                    if first_valid and first_value > best_value:
+                        best_value = first_value
+                        best_set = list(combo_first)
+
+
+        return (best_value, best_set)
+
+    def build_badge_set(self,
+                        set_name: str,
+                        badges: list[Badge]) -> (int, list[Badge]):
+        type_badges = badges.copy()
+        type_badges = self.filter_badges_by_type(self.badge_types,
+                                                 type_badges)
+        type_badges = sorted(type_badges, key=lambda b: (b.pct_actual_bonus, b.set, b.slot), reverse=True)
+
+        filtered_badges = type_badges
 
         if not self.reroll_set:
-            badges = self.filter_badges_by_set(badge.set, badges)
+            filtered_badges = self.filter_badges_by_set([ set_name ], type_badges)
+
         if not self.reroll_bonus:
-            badges = self.filter_badges_by_traits([ badge.bonus_target ], badges)
-        if self.reroll_slot:
-            badges = self.filter_badges_by_slot(badge.slot, badges)
+            filtered_badges = self.filter_badges_by_traits(self.bonus_targets,
+                                                           filtered_badges)
 
-        badges = sorted(badges,
-                        key=lambda d: d.pct_actual_bonus,
-                        reverse=True)
+        # Try all combinations of badges from each desired badge type.
+        # This simply considers the pct_actual_bonus as the "value" of
+        # each badge and uses that to compare sets.
+        type1 = self.badge_types[0]
+        type1_badges = self.filter_badges_by_type([ type1 ], filtered_badges)
+        type2 = self.badge_types[1]
+        type2_badges = self.filter_badges_by_type([ type2 ], filtered_badges)
 
-        # print('Filtered and sorted badges:')
-        # pprint.pprint(badges)
+        slots_type1 = { i: [] for i in range(1,7) }
+        slots_type2 = { i: [] for i in range(1,7) }
 
-        if len(badges) != 0 and badges[0].pct_actual_bonus > badge.pct_actual_bonus:
-            return badges[0]
+        best_value = 0
+        best_set = None
+        best_set_rerolls = 0
+
+        if len(type2_badges) < len(type1_badges):
+            temp = type1_badges
+            temp_type = type1
+            type1_badges = type2_badges
+            type1 = type2
+            type2_badges = temp
+            type2 = temp_type
+
+        max_type1_combinations = len(list(combinations(type1_badges, 3))) + len(list(combinations(type1_badges, 2)))
+        max_type2_combinations = len(list(combinations(type2_badges, 3))) + len(list(combinations(type2_badges, 2)))
+
+        type1_iterations = 0
+        type2_iterations = 0
+        total_iterations = 0
+        for count_type1 in range(2, 4):
+            type1_combinations = combinations(type1_badges, count_type1)
+
+            type2_iterations = 0
+            executor = ThreadPoolExecutor(max_workers=100)
+
+            for combo_type1 in type1_combinations:
+                type1_value = 0
+                type1_occupancy = set()
+                type1_valid = True
+
+                for badge in combo_type1:
+                    if badge.slot in type1_occupancy and not self.reroll_slot:
+                        type1_valid = False
+                        break
+                    type1_occupancy.add(badge.slot)
+                    type1_value += badge.pct_actual_bonus
+
+                if type1_valid:
+                    type2_value = 0
+                    type2_valid = True
+                    type2_combo = []
+
+                    new_value, new_set, new_set_rerolls = self.sub_combinations(
+                        set_name, range(2,4), type2, type2_badges, type1_occupancy,
+                        combo_type1, type_badges, type1_value, type1_valid, False)
+                    type2_iterations += 1
+                    total_iterations += 1
+
+                    if ( (new_set_rerolls <= self.max_rerolls) or
+                         (best_set is None) ):
+                        if new_value > best_value:
+                            best_value = new_value
+                            best_set = new_set
+                            best_set_rerolls = new_set_rerolls
+                        elif new_value == best_value:
+                            if new_set_rerolls < best_set_rerolls:
+                                best_value = new_value
+                                best_set = new_set
+                                best_set_rerolls = new_set_rerolls
+
+            type1_iterations += 1
+
+        return (best_value, best_set)
+
+    def store_set(badge_set_details):
+        print(' - In storing')
+        self.badges_to_process_lock.acquire()
+        self.badges_to_process.append(badges)
+        print(f'Len badges to process = {len(self.badges_to_process)}')
+        self.badges_to_process_lock.release()
+        print(' - Exiting storing')
+
+    def sub_combinations(self,
+                         set_name: str,
+                         the_range,
+                         badge_type: str,
+                         badges: list[Badge],
+                         other_occupancy: set[int],
+                         other_combo: tuple[Badge, ...],
+                         type_badges: list[Badge],
+                         other_value: int,
+                         other_valid: bool,
+                         is_thread: bool) -> (int, list[Badge], int):
+        """Process combinations of badge_type items from badges
+        to build out a full badge set."""
+        if is_thread:
+            print('STARTING THREAD')
+        # start_time = time.time()
+        best_value = 0
+        best_set = None
+        best_set_rerolls = self.max_rerolls
+
+        # Incoming type_badges has all badges for both types, filter
+        # that to the specific one.
+        this_type_badges = type_badges
+        if badge_type is not None:
+            this_type_badges = self.filter_badges_by_type([ badge_type ], type_badges)
+        for count in the_range:
+            sub_combinations = combinations(badges, count)
+            sub_combinations = combinations(badges, count)
+
+            for combo in sub_combinations:
+                value = 0
+                occupancy = other_occupancy.copy()
+                is_valid = True
+                saved_combo = []
+
+                for badge in combo:
+                    slot_exists = badge.slot in occupancy
+                    if slot_exists and not self.reroll_slot:
+                        is_valid = False
+                        break
+                    occupancy.add(badge.slot)
+                    value += badge.pct_actual_bonus
+
+                if is_valid:
+                    saved_combo = combo
+                    if len(saved_combo) != 3:
+                        saved_combo = self.fill_combo(badge_type,
+                                                      set_name,
+                                                      combo,
+                                                      this_type_badges,
+                                                      occupancy,
+                                                      other_combo)
+
+                if other_valid and is_valid:
+                    new_value = other_value + value
+                    new_set = list(other_combo) + list(saved_combo)
+                    new_set_rerolls = self.count_rerolls(new_set, set_name)
+
+                    if ( (new_set_rerolls <= self.max_rerolls) or
+                         (best_set is None) ):
+                        if new_value > best_value:
+                            best_value = new_value
+                            best_set = new_set
+                            best_set_rerolls = new_set_rerolls
+                        elif new_value == best_value:
+                            if new_set_rerolls < best_set_rerolls:
+                                best_value = new_value
+                                best_set = new_set
+                                best_set_rerolls = new_set_rerolls
+
+        # end_time = time.time()
+        # print(f' - {end_time - start_time}')
+        if is_thread:
+            # print('Storing')
+            # pprint((best_value, best_set, best_set_rerolls))
+            store_set((best_value, best_set, best_set_rerolls))
+            return
         else:
-            return badge
+            return best_value, best_set, best_set_rerolls
 
+    def fill_combo(self, type: str,
+                   set_name: str,
+                   combo: tuple[Badge, ...],
+                   badges: list[Badge],
+                   occupancy: set[int],
+                   other_combo: set[Badge]):
+        """When a badge combo is less than three badges, then find the best
+        alternative badge to fill out that combo to three badges."""
+        # If all the rerolls are enabled, then there isn't anything
+        # else to be done.
+        if self.reroll_set and self.reroll_bonus and self.reroll_slot:
+            return combo
 
+        avail_badges: list[Badge] = badges.copy()
 
-    def find_badge(self,
-                   slot: int,
-                   types: list[str],
-                   badges: list[Badge]) -> Badge:
-        # print("Looking for a badge.  self.reroll_slot is {}".format(self.reroll_slot))
-        # for tp in types:
-        #     print("Needed type:  {}".format(tp))
+        for badge in combo:
+            avail_badges.remove(badge)
 
-        choices: list[Badge] = []
+        # for badge in combo:
+        #     print(f'{badge.short_str()} ', end='')
+        # print()
+
+        # sorted_badges = sorted(available_badges, key=lambda b: (b.pct_actual_bonus, b.set), reverse=True)
+        if not self.reroll_slot:
+            needed_slots = list(set([1,2,3,4,5,6]) - occupancy)
+            avail_badges = self.filter_badges_by_slot(needed_slots, avail_badges)
+
+        if not self.reroll_set:
+            avail_badges = self.filter_badges_by_set([ set_name ], avail_badges)
+
+        if len(avail_badges) > 0:
+            return combo + (avail_badges[0],)
+        else:
+            return combo
+
+    def count_rerolls(self, badges: list[Badge], set_name: str) -> int:
+        """Count the number of rerolls required for this set."""
+        count = 0
+        slots = { i: -1 for i in range(1,7) }
         for badge in badges:
-            if (self.reroll_slot or badge.slot == slot) and badge.type in types:
-                choices.append(badge)
+            slots[badge.slot] += 1
+            if self.reroll_set and badge.set != set_name:
+                count += 1
+            if (self.reroll_bonus and
+                badge.bonus_target not in self.bonus_targets):
+                count += 1
+        for slot in slots:
+            count += slots[slot]
 
-        if len(choices) != 0:
-            choices = sorted(choices, key=lambda d: d.pct_actual_bonus)
-            # print("Choices has {} items.".format(len(choices)))
-            return choices[0]
-        else:
-            return None
-
-    def compute_possibilities(self) -> BadgeSet:
-        """Compute BadgeSets six ways: First by just looking at the bonuses.
-        Then looking at each of the sets in turn to find out whether those are
-        any better with bonuses."""
-
-        chosen_set: BadgeSet = None
-
-        type_badges: list[Badge] = self.filter_badges_by_type(self.badge_types,
-                                                              self.computed_badges)
-
-        # First, compute the badges without set considered if self.reroll_set is True
-        if self.reroll_set:
-            # print('picking badges willy-nilly')
-            chosen_set = self.find_best_badges(type_badges)
-        # print('{} set: {}'.format(self.name, chosen_set))
-
-        # Go through all the different sets and find a badge set that
-        # is best out of them all
-        for set in ['A', 'B', 'C', 'D', 'E']:
-            # if self.name == 'Connie':
-            #     print(f'===> Looking at set {set}')
-            type_and_set_badges = self.filter_badges_by_set(set, type_badges)
-            new_set = self.find_best_badges(type_and_set_badges)
-            # if self.name == 'Connie':
-            #     print('===>   find_best_badges')
-            #     pprint.pprint(new_set.badges)
-            if chosen_set is None:
-                chosen_set = new_set
-            if self.type_focus != '':
-                # print('DEBUG:  character                 = {self.name}')
-                # print('        chosen_set.improvement    = {chosen_set.improvement}')
-                # print('        new_set.improvement       = {new_set.improvement}')
-                # si_check = (chosen_set.improvement > (new_set.improvement + 5.0))
-                # print('          check:                    {si_check}')
-                # print('        chosen_set.type_increases = {chosen_set.type_increases[self.type_focus]}')
-                # print('        new_set.type_increases    = {new_set.type_increases[self.type_focus]}')
-                # ti_check = ((chosen_set.type_increases[self.type_focus] + 5.0) > new_set.type_increases[self.type_focus])
-                # print('          check:                    {ti_check}')
-                # If the chosen set is 5 points better, but the
-                # chosen_set's type_focus is within a few points of
-                # the new set's type_focus, then keep the chosen_set
-                if (chosen_set.improvement > (new_set.improvement + 5.0)) and \
-                   ((chosen_set.type_increases[self.type_focus] + 5.0) > new_set.type_increases[self.type_focus]):
-                    chosen_set = chosen_set
-                else:
-                    if new_set.type_increases[self.type_focus] > chosen_set.type_increases[self.type_focus]:
-                        chosen_set = new_set
-            else:
-                if new_set.improvement > chosen_set.improvement:
-                    chosen_set = new_set
-
-        self.chosen_set = chosen_set
-        return chosen_set
+        return count
 
 def get_unused_badges(badges: list[Badge], stars: int) -> list[Badge]:
     unused: list[Badge] = []
@@ -778,6 +1202,18 @@ def get_unused_badges(badges: list[Badge], stars: int) -> list[Badge]:
         if badge.stars == stars:
             unused.append(badge)
     return unused
+
+def consume_badges(badge_set: BadgeSet, badge_list: list[Badge]) -> list[Badge]:
+    if badge_set is None:
+        return badge_list
+
+    for badge in badge_set.badges():
+        if badge in badge_list:
+            badge_list.remove(badge)
+        else:
+            print(f'badge is not in badge_list:\n{badge}')
+
+    return badge_list
 
 def parse_args():
     argparser = ArgumentParser(description="Walking Dead No Man's Land badge calculator")
@@ -791,11 +1227,15 @@ def parse_args():
                            help='CSV file containing up-to-date TWD NML survivor data.')
     argparser.add_argument('-B', '--badge_file', dest='badge_file', type=str, default='badges.csv',
                            help='CSV file containing up-to-date TWD NML badge data.')
+    argparser.add_argument('-m', '--max_rerolls', dest='max_rerolls', type=int, default=5,
+                           help='The maximum number of rerolls allowed per survivor badge set')
+    argparser.add_argument('-s', '--min_stars', dest='min_stars', type=int, default=4,
+                           help='Minimum number of stars a badge must have to be considered')
     arguments = argparser.parse_args()
 
     return arguments
 
-def import_survivors(survivor_file):
+def import_survivors(survivor_file: str):
     survivors = {}
     with open(survivor_file) as charfile:
         reader = csv.DictReader(charfile)
@@ -808,31 +1248,28 @@ def import_survivors(survivor_file):
 
             traits: list[str] = []
             traits.append(row['Trait1'])
-            #row.pop('Trait1')
             traits.append(row['Trait2'])
-            #row.pop('Trait2')
             traits.append(row['Trait3'])
-            #row.pop('Trait3')
             traits.append(row['Trait4'])
-            #row.pop('Trait4')
             traits.append(row['Trait5'])
-            #row.pop('Trait5')
+
+            survivor['Weapon Damage'] = int(row['Weapon'])
             survivor['Level'] = int(row['Lvl'])
             survivor['Stars'] = row['Stars'].split('.')
             survivor['Traits'] = traits
             survivor['Name'] = row['Person']
-            #row.pop('Person')
             survivors[survivor['Name']] = survivor
 
     return survivors
 
-def import_badges(badge_file):
+def import_badges(badge_file: str, min_stars: int = 4):
     badges = []
     with open(badge_file) as badgefile:
         reader = csv.DictReader(badgefile)
         for row in reader:
             new_badge = Badge(row)
-            badges.append(new_badge)
+            if new_badge.stars >= min_stars:
+                badges.append(new_badge)
     return badges
 
 def main():
@@ -847,72 +1284,65 @@ def main():
     available_badges: list[Badge] = []
     survivors: dict[str, Any] = {}
 
-    available_badges = import_badges(arguments.badge_file)
+    available_badges = import_badges(arguments.badge_file,
+                                     min_stars = arguments.min_stars)
     survivors = import_survivors(arguments.survivor_file)
 
     results: dict[str, BadgeSet] = {}
 
     chars = {
-        'Connie': { 'teammates': ['Assault', 'Shooter'],
+        'Yumiko': { 'teammates': ['Assault', 'Scout'],
                     'types': ['D', 'CD'],
-                    'type_focus': 'CD',
-                    'starting_bonus': { 'CC': 45 },
-                    'class': 'Scout' },
-        # 'Yumiko': { 'teammates': ['Assault', 'Scout'],
+                    'starting_bonus': { 'CC': 48 },
+                    'class': 'Shooter' },
+        'Mercer': { 'teammates': ['Shooter', 'Scout'],
+                    'types': ['D', 'CD'],
+                    'starting_bonus': { 'CC': 50 },
+                    'class': 'Assault' },
+        # 'Connie': { 'teammates': ['Assault', 'Shooter', 'Yumiko', 'Mercer' ],
         #             'types': ['D', 'CD'],
-        #             'type_focus': 'CD',
-        #             'starting_bonus': { 'CC': 48 },
-        #             'class': 'Shooter' },
-        # 'Mercer': { 'teammates': ['Shooter', 'Scout'],
-        #             'types': ['D', 'CD'],
-        #             'type_focus': 'CD',
-        #             'starting_bonus': { 'CC': 50 },
-        #             'class': 'Assault' },
+        #             'starting_bonus': { 'CC': 45 },
+        #             'class': 'Scout' },
         # 'Sasha': { 'teammates': ['Shooter', 'Assault'],
-        #            'types': ['CD', 'D'],
-        #            'type_focus': 'D',
+        #            'types': ['D', 'CD'],
         #            'starting_bonus': { 'CC': 50 },
         #            'class': 'Hunter' },
+        # 'Ezekiel': { 'teammates': ['Assault', 'Scout', 'Mercer', 'Connie'],
+        #              'types': ['D', 'CD'],
+        #              'class': 'Warrior'
+        #             },
+        # 'Tyreese': { 'teammates': ['Warrior', 'Scout', 'Ezekiel', 'Connie'],
+        #              'types': ['D', 'CD'],
+        #              'class': 'Warrior'
+        #             },
         # 'Aaron': { 'teammates': ['Hunter', 'Shooter'],
         #            'types': ['D', 'CD'],
-        #            'type_focus': 'CD',
         #            'starting_bonus': { 'CC': 45 },
         #            'class': 'Shooter' },
-        # 'Eugene': { 'teammates': ['Bruiser', 'Bruiser'],
+        # 'Fighter Rosita': { 'teammates': ['Bruiser', 'Morgan', 'Protector Daryl'],
         #             'types': ['H', 'DR'],
-        #             'type_focus': 'DR',
-        #             'starting_bonus': { 'CC': 45 },
         #             'class': 'Bruiser'},
-        # 'Morgan': { 'teammates': ['Bruiser', 'Bruiser'],
+        # 'Morgan': { 'teammates': ['Bruiser', 'Bruiser', 'Fighter Rosita', 'Protector Daryl'],
         #             'types': ['H', 'DR'],
-        #             'type_focus': 'DR',
-        #             'starting_bonus': { 'CC': 45 },
         #             'class': 'Bruiser'},
-        # 'Negan': { 'teammates': ['Bruiser', 'Bruiser'],
-        #             'types': ['H', 'DR'],
-        #             'type_focus': 'DR',
-        #             'starting_bonus': { 'CC': 45 }},
-        # 'Michonne': { 'teammates': ['Hunter', 'Bruiser'],
-        #               'types': ['D', 'DR'],
-        #             'type_focus': 'D'  },
-        # 'Abraham': { 'teammates': ['Hunter', 'Hunter'],
-        #             'types': ['D', 'H'],
-        #             'type_focus': 'H'  },
+        # 'Protector Daryl': { 'teammates': ['Bruiser', 'Morgan', 'Fighter Rosita'],
+        #            'types': ['H', 'DR'],
+        #            'class': 'Bruiser' },
         # 'Daryl': { 'teammates': ['Shooter', 'Hunter'],
         #            'types': ['DR', 'D'],
-        #            'type_focus': 'DR'  },
+        #            'class': 'Hunter' },
         # 'CarolH': { 'teammates': ['Shooter', 'Hunter'],
-        #            'types': ['CC', 'CD'],
-        #            'type_focus': 'CC'  },
+        #             'types': ['CC', 'CD'],
+        #             'class': 'Hunter' },
         # 'Carl': { 'teammates': ['Hunter', 'Hunter'],
-        #            'types': ['DR', 'H'],
-        #            'type_focus': 'H'  },
+        #           'types': ['DR', 'H'],
+        #           'class': 'Shooter' },
         # 'Norman': { 'teammates': ['Hunter', 'Bruiser'],
         #             'types': ['D', 'CD'],
-        #             'type_focus': 'D'  },
+        #             'class': 'Hunter' },
         # 'Maggie': { 'teammates': ['Shooter', 'Hunter'],
         #             'types': ['CD', 'CC'],
-        #             'type_focus': 'CD'  },
+        #             'class': 'Shooter' },
     }
 
     built_chars = {}
@@ -925,36 +1355,24 @@ def main():
                                     survivors[name],
                                     teammates=survivor['teammates'],
                                     badge_types=survivor['types'],
-                                    badges=available_badges,
-                                    type_focus=survivor['type_focus'])
+                                    max_rerolls=arguments.max_rerolls)
 
         char.set_restrictions(reroll_slot=arguments.reroll_slot,
-                                         reroll_set=arguments.reroll_set,
-                                         reroll_bonus=arguments.reroll_bonus)
-        res = char.compute_possibilities()
+                              reroll_set=arguments.reroll_set,
+                              reroll_bonus=arguments.reroll_bonus)
 
-        # pprint.pprint(res.badges)
-
-        for badge in res.badges:
-            available_badges.remove(badge)
-        results[char.name] = res
-        # if survivor == 'Eugene':
-        #     print(res)
-        built_chars[char.name] = char
-
-    for res in built_chars:
-        print(f'{res}')
-        print('========================================================================')
-        print(f'{built_chars[res].chosen_set}')
-        print(f'Damage:           {built_chars[res].get_damage()}')
-        print(f'Critical Damage:  {built_chars[res].get_critical_damage()}')
-
-
-    # print('Unused 5 Star Badges')
-    # print('====================')
-    # for unused in get_unused_badges(available_badges, stars=5):
-    #     print(unused)
-
+        # print(char.badge_set)
+        char.find_best_badge_set(available_badges)
+        available_badges = consume_badges(char.badge_set, available_badges)
+        print(f'{char.name}:  Building for {", ".join(sorted(survivor["types"], reverse=True))}')
+        print('===========================================================================================')
+        if char.badge_set is not None:
+            print(char.badge_set.print_stat_block(char.get_damage(), char.get_critical_damage(), char.get_charge_damage()))
+        else:
+            print(' No badge set was generated with the provided restrictions!')
+        print('===========================================================================================')
+        print()
+        print()
 
 if __name__ == '__main__':
     main()
