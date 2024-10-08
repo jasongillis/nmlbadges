@@ -1,7 +1,7 @@
 # Badger: An automated chooser for TWD NML badges
 
 ```
-usage: chooser.py [-h] [-rS] [-rs] [-rb] [-S SURVIVOR_FILE] [-B BADGE_FILE]
+usage: badger.py [-h] [-rS] [-rs] [-rb] [-S SURVIVOR_FILE] [-B BADGE_FILE]
                   [-m MAX_REROLLS] [-s MIN_STARS]
 
 Walking Dead No Man's Land badge calculator
@@ -34,6 +34,10 @@ It's also helpful to run the program with several different selections of option
 Specifying all three reroll options (`-rb`, `-rs`, and `-rS`) is going to take a very long time to run with large badge sets.
 
 If you don't want to have a lot of rerolls, specify the max rerolls option, `-m`, to limit the number of rerolls per badge set.  This might prevent the tool from finding a valid set, for some survivors, though.  The number of rerolls could be higher than the value provided by `-m` as the tool will pick at least one badge set even if it has more rerolls than desired.
+
+## Running
+
+Check out the code and just run `python badger.py` with the correct options.  (Obviously, you'll need Python 3 installed, too.) You'll need to have a `survivor.csv` and `badges.csv` file to provide the tool information to work with.
 
 ## Output
 
