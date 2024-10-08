@@ -57,10 +57,10 @@ chars = {
                 'class': 'Shooter' },
 }
 
-def get_unused_badges(badges: list[Badge], stars: int) -> list[Badge]:
+def get_unused_badges(badges: list[Badge], min_stars: int) -> list[Badge]:
     unused: list[Badge] = []
     for badge in badges:
-        if badge.stars == stars:
+        if badge.stars >= min_stars:
             unused.append(badge)
     return unused
 
@@ -76,6 +76,19 @@ def consume_badges(badge_set: BadgeSet, badge_list: list[Badge]) -> list[Badge]:
 
     return badge_list
 
+def save_unused_badges(badges: list[Badge], filename: str):
+    with open(filename, 'w') as csvfile:
+        fields = [ 'Set', 'Slot', 'Type', 'Increase',
+                   'Increase %', 'Stars', 'Bonus',
+                   'Bonus %', 'Bonus Type', 'Bonus Target' ]
+
+        writer = csv.DictWriter(csvfile, fieldnames=fields)
+
+        writer.writeheader()
+
+        for badge in badges:
+            writer.writerow(badge.get_dict())
+
 def parse_args():
     argparser = ArgumentParser(prog='badger.py', description="Walking Dead No Man's Land badge calculator")
     argparser.add_argument('-rS', '--reroll_set', dest='reroll_set', action='store_true', default=False,
@@ -84,14 +97,19 @@ def parse_args():
                            help='Assume that badge slots will be re-rolled and do not consider that in calculations')
     argparser.add_argument('-rb', '--reroll_bonus', dest='reroll_bonus', action='store_true', default=False,
                            help='Assume that badge bonuses will be re-rolled and do not consider that in calculations')
-    argparser.add_argument('-S', '--survivor_file', dest='survivor_file', type=str, default='survivors.csv',
-                           help='CSV file containing up-to-date TWD NML survivor data.')
-    argparser.add_argument('-B', '--badge_file', dest='badge_file', type=str, default='badges.csv',
-                           help='CSV file containing up-to-date TWD NML badge data.')
     argparser.add_argument('-m', '--max_rerolls', dest='max_rerolls', type=int, default=5,
                            help='The maximum number of rerolls allowed per survivor badge set')
     argparser.add_argument('-s', '--min_stars', dest='min_stars', type=int, default=4,
                            help='Minimum number of stars a badge must have to be considered')
+    argparser.add_argument('-S', '--survivor_file', dest='survivor_file', type=str,
+                           default='survivors.csv', metavar='FILENAME',
+                           help='CSV file containing up-to-date TWD NML survivor data.')
+    argparser.add_argument('-B', '--badge_file', dest='badge_file', type=str,
+                           default='badges.csv', metavar='FILENAME',
+                           help='CSV file containing up-to-date TWD NML badge data.')
+    argparser.add_argument('-u', '--unused_badges', dest='save_badges', type=str,
+                           default='', metavar='FILENAME',
+                           help='After selecting badges, save the unused badges to the specified file')
     arguments = argparser.parse_args()
 
     return arguments
@@ -149,14 +167,11 @@ def main():
                                      min_stars = arguments.min_stars)
     survivors = import_survivors(arguments.survivor_file)
 
-    results: dict[str, BadgeSet] = {}
-
-
     built_chars = {}
 
     for name in chars:
         survivor = chars[name]
-        # print('Total badges available:  {}'.format(len(badges)))
+
         char: Survivor = Survivor(name,
                                   survivor['class'],
                                   survivors[name],
@@ -168,7 +183,6 @@ def main():
                               reroll_set=arguments.reroll_set,
                               reroll_bonus=arguments.reroll_bonus)
 
-        # print(char.badge_set)
         char.find_best_badge_set(available_badges)
         available_badges = consume_badges(char.badge_set, available_badges)
         print(f'{char.name}:  Building for {", ".join(sorted(survivor["types"], reverse=True))}')
@@ -180,6 +194,9 @@ def main():
         print('===========================================================================================')
         print()
         print()
+
+    if arguments.save_badges != '':
+        save_unused_badges(available_badges, arguments.save_badges)
 
 if __name__ == '__main__':
     main()

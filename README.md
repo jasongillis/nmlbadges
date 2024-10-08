@@ -1,29 +1,25 @@
 # Badger: An automated chooser for TWD NML badges
 
 ```
-usage: badger.py [-h] [-rS] [-rs] [-rb] [-S SURVIVOR_FILE] [-B BADGE_FILE]
-                  [-m MAX_REROLLS] [-s MIN_STARS]
+usage: badger.py [-h] [-rS] [-rs] [-rb] [-m MAX_REROLLS] [-s MIN_STARS] [-S FILENAME] [-B FILENAME] [-u FILENAME]
 
 Walking Dead No Man's Land badge calculator
 
 options:
   -h, --help            show this help message and exit
-  -rS, --reroll_set     Assume that badge sets will be re-rolled and do not
-                        consider that in calculations
-  -rs, --reroll_slot    Assume that badge slots will be re-rolled and do not
-                        consider that in calculations
-  -rb, --reroll_bonus   Assume that badge bonuses will be re-rolled and do not
-                        consider that in calculations
-  -S SURVIVOR_FILE, --survivor_file SURVIVOR_FILE
-                        CSV file containing up-to-date TWD NML survivor data.
-  -B BADGE_FILE, --badge_file BADGE_FILE
-                        CSV file containing up-to-date TWD NML badge data.
+  -rS, --reroll_set     Assume that badge sets will be re-rolled and do not consider that in calculations
+  -rs, --reroll_slot    Assume that badge slots will be re-rolled and do not consider that in calculations
+  -rb, --reroll_bonus   Assume that badge bonuses will be re-rolled and do not consider that in calculations
   -m MAX_REROLLS, --max_rerolls MAX_REROLLS
-                        The maximum number of rerolls allowed per survivor
-                        badge set
+                        The maximum number of rerolls allowed per survivor badge set
   -s MIN_STARS, --min_stars MIN_STARS
-                        Minimum number of stars a badge must have to be
-                        considered
+                        Minimum number of stars a badge must have to be considered
+  -S FILENAME, --survivor_file FILENAME
+                        CSV file containing up-to-date TWD NML survivor data.
+  -B FILENAME, --badge_file FILENAME
+                        CSV file containing up-to-date TWD NML badge data.
+  -u FILENAME, --unused_badges FILENAME
+                        After selecting badges, save the unused badges to the specified file
 ```
 
 When running the program, note that adding all of `-rs`, `-rb`, and `-rS` will cause the search to take a VERY long time.  Limit the min
@@ -71,7 +67,7 @@ The damage numbers are estimates as the calculation formulas available on the pu
 
 The `survivor.csv` file includes details of your survivors, but that is just data.  Youl will need to specify what survivors to build badge sets for and what types of badges that you want for each survivor. Currently, the tool only supports two badge types for each survivor, so you can do Damage and Critical Damage or Health and Damage Reduction, but not Damage, Health, and Critical Damage.
 
-There is a dictionary at the top of the file called `chars` that specifies what survivors to build sets for.  This is the format for the dictionary:
+There is a dictionary at the top of the `badger.py` file called `chars` that specifies what survivors to build sets for.  This is the format for the dictionary:
 
 ```
 chars = {
@@ -83,7 +79,7 @@ chars = {
 }
 ```
 
-The values in types can be `D`, `CD`, `CC`, `H`, or `DR`.
+The values in types can be `D`, `CD`, `CC`, `H`, or `DR`.  This specifies what kinds of badges to pick.
 
 The classes can be `Shooter`, `Bruiser`, `Assault`, `Scout`, or `Hunter`.
 

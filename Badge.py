@@ -25,6 +25,19 @@ class Badge:
 
         self.unmark()
 
+    def get_dict(self):
+        return {
+            'Set': self.set,
+            'Slot': self.slot,
+            'Type': self.type,
+            'Increase': self.raw_increase,
+            'Increase %': self.pct_increase,
+            'Stars': self.stars,
+            'Bonus': self.raw_bonus,
+            'Bonus %': self.pct_bonus,
+            'Bonus Type': self.bonus_type,
+            'Bonus Target': self.bonus_target
+        }
 
     def mark(self,
              bonus_set: str,
