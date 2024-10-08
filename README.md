@@ -1,4 +1,4 @@
-# An automated chooser for TWD NML badges
+# Badger: An automated chooser for TWD NML badges
 
 ```
 usage: chooser.py [-h] [-rS] [-rs] [-rb] [-S SURVIVOR_FILE] [-B BADGE_FILE]

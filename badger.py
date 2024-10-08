@@ -2,11 +2,7 @@
 
 import os
 import csv
-# from pprint import pprint
-# import math
-# import time
 
-# from itertools import combinations
 from argparse import ArgumentParser
 
 from Badge import Badge
@@ -81,7 +77,7 @@ def consume_badges(badge_set: BadgeSet, badge_list: list[Badge]) -> list[Badge]:
     return badge_list
 
 def parse_args():
-    argparser = ArgumentParser(description="Walking Dead No Man's Land badge calculator")
+    argparser = ArgumentParser(prog='badger.py', description="Walking Dead No Man's Land badge calculator")
     argparser.add_argument('-rS', '--reroll_set', dest='reroll_set', action='store_true', default=False,
                            help='Assume that badge sets will be re-rolled and do not consider that in calculations')
     argparser.add_argument('-rs', '--reroll_slot', dest='reroll_slot', action='store_true', default=False,
