@@ -244,7 +244,7 @@ class Survivor:
         best_set_name = ''
         similar_sets = 0
 
-        all_sets = ['A', 'B', 'C', 'D', 'E']
+        all_sets = ['A', 'B', 'C', 'D', 'E', '']
         # all_sets = [ 'C', 'E' ]
         rep_set = []
         rep_value = 0
@@ -254,6 +254,14 @@ class Survivor:
         self.compute_actual_bonus(available_badges)
 
         for set_name in all_sets:
+            # Don't consider the empty set if any kind of rerolling is
+            # enabled.
+            if ( set_name == '' and
+                 (self.reroll_set or
+                  self.reroll_slot or
+                  self.reroll_bonus) ):
+                 continue
+
             new_value, new_set = self.build_badge_set(set_name,
                                                       available_badges)
             if new_set is None:
@@ -326,6 +334,8 @@ class Survivor:
             new_set_rerolls = new_bs.reroll_count()
             if ( (new_set_rerolls <= self.max_rerolls) or
                  (best_set is None) ):
+                if best_set is None:
+                    print(f'Reroll count of this set is {new_set_rerolls}')
                 if new_bs_improvement > best_improvement:
                     best_improvement = new_bs_improvement
                     best_set = new_bs
@@ -426,7 +436,7 @@ class Survivor:
 
         filtered_badges = type_badges
 
-        if not self.reroll_set:
+        if not self.reroll_set and set_name != '':
             filtered_badges = self.filter_badges_by_set([ set_name ], type_badges)
 
         if not self.reroll_bonus:
