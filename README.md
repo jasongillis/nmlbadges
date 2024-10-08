@@ -33,7 +33,7 @@ It's also helpful to run the program with several different selections of option
 
 Specifying all three reroll options (`-rb`, `-rs`, and `-rS`) is going to take a very long time to run with large badge sets.
 
-If you don't want to have a lot of rerolls, specify the max rerolls option, `-m`, to limit the number of rerolls per badge set.  This might prevent the tool from finding a valid set, for some survivors, though.
+If you don't want to have a lot of rerolls, specify the max rerolls option, `-m`, to limit the number of rerolls per badge set.  This might prevent the tool from finding a valid set, for some survivors, though.  The number of rerolls could be higher than the value provided by `-m` as the tool will pick at least one badge set even if it has more rerolls than desired.
 
 ## Output
 
