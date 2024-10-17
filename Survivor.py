@@ -38,6 +38,11 @@ class Survivor:
         self.damage = 0
         self.badge_set = None
         self.weapon_damage = character_details['Weapon Damage']
+        self.weapon_mod = character_details['Weapon Mod']
+        self.weapon_crit_mod = character_details['Weapon Crit Mod']
+        self.weapon_charge_mod = character_details['Weapon Charge Mod']
+        self.armor_crit_mod = character_details['Armor Crit Mod']
+        self.armor_charge_mod = character_details['Armor Charge Mod']
         self.reroll_slot = False
         self.reroll_set = False
         self.reroll_bonus = False
@@ -53,41 +58,57 @@ class Survivor:
         self.reroll_bonus = reroll_bonus
 
     def get_damage(self, weapon_boost: float = 1.0) -> int:
+        """Return the damage value that would appear on the survivor detail
+        screen in the game.  This means that things like final damage and
+        razor aren't represented here."""
+
         # print(f'Survivor Level:  {self.character_details["Level"]}')
         class_base = base_details[self.survivor_class]['Damage'][self.character_details['Level']]
         # print(f'Class base = {class_base}')
 
         base_level = int(self.character_details['Stars'][0])
         if base_level <= 5:
-            stars_modifier = base_level * 0.10 - 0.10
+            stars_modifier = (base_level - 1) * 0.10
         else:
             stars_modifier = 0.4 + (base_level - 5) * 0.05
-        #print(f'Stars mod = {stars_modifier}')
+        # print(f'Stars mod = {stars_modifier}')
 
         if self.name in hero_boosts:
             hero_boost = hero_boosts[self.name]['Damage']
         else:
             hero_boost = 0.0
-        #print(f'Hero boost = {hero_boost}')
+        # print(f'Hero boost = {hero_boost}')
+
+        base_survivor_damage = class_base * (1.0 + stars_modifier + hero_boost)
+        # print(f'base_survivor_damage = {base_survivor_damage}')
+
+        # Weapon boost is related to critical and charge attacks.
+        base_weap_damage = ( base_survivor_damage +
+                             self.weapon_damage * weapon_boost )
+        # print(f'base_weap_damage = {base_weap_damage}')
 
         #print(f'final base damage = {class_base * (1 + hero_boost + stars_modifier)}')
 
-        trait_bsts = self.get_trait_boost('Damage')
-        #print(f'Damage trait boost:  {trait_bsts}')
+        weapon_trait_bsts = self.weapon_mod
+        # Trait boosts and weapon boosts (i.e. Lethal) get added in at
+        # the same step.
+        trait_bsts = ( 1.0 + self.get_trait_boost('Damage') +
+                       weapon_trait_bsts )
+        # print(f'trait_bsts = {trait_bsts}')
 
-        # base_damage = math.floor(class_base * ( 1.0 + hero_boost + stars_modifier))
-        base_damage = class_base * ( 1.0 + hero_boost + stars_modifier)
-        weapon_damage = self.weapon_damage * weapon_boost
+        damage_incl_traits = base_weap_damage * trait_bsts
+        # print(f'damage_incl_traits = {damage_incl_traits}')
 
         #print(f'Damage without badges should be: {(base_damage + weapon_damage) * (1 + trait_bsts)}')
 
-        damage_badges = self.get_badge_boost('D')
-        # print(f'Damage Badges:  {damage_badges}')
+        damage_badge_bsts = 1.0 + self.get_badge_boost('D')
+        # print(f'damage_badge_bsts = {damage_badge_bsts}')
         # print(f'Damage Badges same set: {damage_badges * 1.2}')
 
-        self.damage = math.floor( (base_damage + weapon_damage) *
-                                  (1.0 + trait_bsts) *
-                                  (1.0 + damage_badges) )
+        damage_incl_badges = damage_incl_traits * damage_badge_bsts
+        # print(f'damage_incl_badges = {damage_incl_badges}')
+        self.damage = math.floor( damage_incl_badges )
+
 
         return int(self.damage)
 
@@ -110,9 +131,18 @@ class Survivor:
             if trait in trait_boosts and trait_boosts[trait]['type'] == type:
                 trait_bsts += trait_boosts[trait]['values'][base_level - level_delta - 1]
 
+        if type == 'Critical Damage':
+            trait_bsts += self.weapon_crit_mod + self.armor_crit_mod
+
+        if type == 'Charge Damage':
+            trait_bsts += self.weapon_charge_mod + self.armor_charge_mod
+
         return trait_bsts
 
     def get_badge_boost(self, type: str) -> float:
+        """Get the damage boost percentage from badges.  This accounts
+        for bonus conditions and the bonus effect improvement from a
+        set bonus."""
         traits = self.bonus_targets
         badge_boost = 0.0
         for badge in self.badge_set.badges():
@@ -124,6 +154,12 @@ class Survivor:
                 increase = badge.pct_increase
                 if badge.bonus_target in self.bonus_targets:
                     increase += badge.pct_bonus
+                    # Yumiko and Sasha seem to get an extra percentage
+                    # point added for max damage badges that have the
+                    # bonus activated.
+                    if ( self.name in ['Yumiko', 'Sasha'] and
+                         type == 'D' and badge.pct_increase >= 18 ):
+                        increase += 1
 
                 badge_boost += ((increase / 100.0) * bonus_set_mult)
         return badge_boost
@@ -649,6 +685,8 @@ class Survivor:
 
 # Data from https://twdnml.fandom.com/wiki/Survivor_Stats
 # OCR'd by https://www.newocr.com/
+# Quinn's health is a guess.  Damage is correct.
+# Simon's health is a guess.  Damage is correct.
 hero_boosts = {
     "Aaron":            { "Damage": 0.10, "Health": 0.10 },
     "Abraham":          { "Damage": 0.10, "Health": 0.15 },
@@ -680,6 +718,7 @@ hero_boosts = {
     "Negan":            { "Damage": 0.30, "Health": 0.10 },
     "Outlaw Negan":     { "Damage": 0.33, "Health": 0.33 },
     "Princess":         { "Damage": 0.15, "Health": 0.10 },
+    "Quinn":            { "Damage": 0.20, "Health": 0.20 },
     "Rick":             { "Damage": 0.20, "Health": 0.20 },
     "Riot Gear Glenn":  { "Damage": 0.33, "Health": 0.33 },
     "Rosita":           { "Damage": 0.15, "Health": 0.10 },
@@ -692,6 +731,7 @@ hero_boosts = {
     "Tyreese":          { "Damage": 0.30, "Health": 0.40 },
     "T-Dog":            { "Damage": 0.20, "Health": 0.20 },
     "Yumiko":           { "Damage": 0.10, "Health": 0.10 },
+    "Simon":            { "Damage": 0.10, "Health": 0.10 },
 }
 
 trait_boosts = {

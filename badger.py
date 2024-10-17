@@ -10,27 +10,27 @@ from BadgeSet import BadgeSet
 from Survivor import Survivor
 
 chars = {
-    'Yumiko': { 'teammates': ['Assault', 'Scout'],
+    # Primary teams CMY, SMY, CET
+    'Yumiko': { 'teammates': ['Assault', 'Scout', 'Mercer', 'Connie'],
                 'types': ['D', 'CD'],
                 'class': 'Shooter' },
-    'Mercer': { 'teammates': ['Shooter', 'Scout'],
+    'Mercer': { 'teammates': ['Shooter', 'Scout', 'Yumiko', 'Connie'],
                 'types': ['D', 'CD'],
                 'class': 'Assault' },
-    'Connie': { 'teammates': ['Assault', 'Shooter', 'Yumiko', 'Mercer' ],
-                'types': ['D', 'CD'],
-                'class': 'Scout' },
-    'Sasha': { 'teammates': ['Shooter', 'Assault'],
-               'types': ['D', 'CD'],
-               'class': 'Hunter' },
     'Ezekiel': { 'teammates': ['Assault', 'Scout', 'Mercer', 'Connie'],
                  'types': ['D', 'CD'],
                  'class': 'Warrior' },
     'Tyreese': { 'teammates': ['Warrior', 'Scout', 'Ezekiel', 'Connie'],
                  'types': ['D', 'CD'],
                  'class': 'Warrior' },
-    'Aaron': { 'teammates': ['Hunter', 'Shooter'],
+    'Sasha': { 'teammates': ['Shooter', 'Assault', 'Mercer', 'Yumiko'],
                'types': ['D', 'CD'],
-               'class': 'Shooter' },
+               'class': 'Hunter' },
+    'Connie': { 'teammates': ['Assault', 'Shooter', 'Yumiko', 'Mercer', 'Warrior', 'Ezekiel', 'Tyreese' ],
+                'types': ['D', 'CD'],
+                'class': 'Scout' },
+
+    # PVP team - Health and DR to last long enough to get up close
     'Fighter Rosita': { 'teammates': ['Bruiser', 'Morgan', 'Protector Daryl'],
                         'types': ['H', 'DR'],
                         'class': 'Bruiser'},
@@ -40,21 +40,17 @@ chars = {
     'Protector Daryl': { 'teammates': ['Bruiser', 'Morgan', 'Fighter Rosita'],
                          'types': ['H', 'DR'],
                          'class': 'Bruiser' },
-    'Daryl': { 'teammates': ['Shooter', 'Hunter'],
+
+    # Outpost team
+    'Daryl': { 'teammates': ['Shooter', 'Hunter', 'Hilltop Maggie', 'Carl'],
                'types': ['DR', 'D'],
                'class': 'Hunter' },
-    'CarolH': { 'teammates': ['Shooter', 'Hunter'],
-                'types': ['CC', 'CD'],
-                'class': 'Hunter' },
-    'Carl': { 'teammates': ['Hunter', 'Hunter'],
-              'types': ['DR', 'H'],
+    'Carl': { 'teammates': ['Hunter', 'Hilltop Maggie', 'Shooter', 'Daryl'],
+              'types': ['DR', 'D'],
               'class': 'Shooter' },
-    'Norman': { 'teammates': ['Hunter', 'Bruiser'],
-                'types': ['D', 'CD'],
-                'class': 'Hunter' },
-    'Maggie': { 'teammates': ['Shooter', 'Hunter'],
-                'types': ['CD', 'CC'],
-                'class': 'Shooter' },
+    'Hilltop Maggie': { 'teammates': ['Hunter', 'Daryl', 'Car', 'Shooter'],
+              'types': ['DR', 'D'],
+              'class': 'Shooter' },
 }
 
 def get_unused_badges(badges: list[Badge], min_stars: int) -> list[Badge]:
@@ -133,6 +129,31 @@ def import_survivors(survivor_file: str):
             traits.append(row['Trait5'])
 
             survivor['Weapon Damage'] = int(row['Weapon'])
+            if row['Weapon Mod'] != '':
+                survivor['Weapon Mod'] = float(row['Weapon Mod'])
+            else:
+                survivor['Weapon Mod'] = 0.0
+
+            if row['Weapon Crit Mod'] != '':
+                survivor['Weapon Crit Mod'] = float(row['Weapon Crit Mod'])
+            else:
+                survivor['Weapon Crit Mod'] = 0.0
+
+            if row['Weapon Charge Mod'] != '':
+                survivor['Weapon Charge Mod'] = float(row['Weapon Charge Mod'])
+            else:
+                survivor['Weapon Charge Mod'] = 0.0
+
+            if row['Armor Charge Mod'] != '':
+                survivor['Armor Charge Mod'] = float(row['Armor Charge Mod'])
+            else:
+                survivor['Armor Charge Mod'] = 0.0
+
+            if row['Armor Crit Mod'] != '':
+                survivor['Armor Crit Mod'] = float(row['Armor Crit Mod'])
+            else:
+                survivor['Armor Crit Mod'] = 0.0
+
             survivor['Level'] = int(row['Lvl'])
             survivor['Stars'] = row['Stars'].split('.')
             survivor['Traits'] = traits

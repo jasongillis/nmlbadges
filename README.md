@@ -61,7 +61,7 @@ A total improvement value is provided that indicates how much better than no bad
 
 Note that a badge item with a `+` or `^` next to it indicates where a re-roll is needed to achieve the calculated numbers.  A `+` indicates that an item should be re-rolled to be optimal, but it wasn't requested by a flag to the program.  A `^` indicates that a reroll is needed and that item was allowed to be rerolled by program flags.
 
-The damage numbers are estimates as the calculation formulas available on the public wiki seem to break when accounging for badge bonuses.
+The damage numbers should be exact or very close (due to rounding).  I noticed that Yumiko and Sasha both have a "feature" where they get an extra 1% added to badge bonuses, so there is a check in the code to add this extra 1% to bonus values on badges.  I checked several normal surviors and a few heroes and couldn't find any others that did this.  I didn't check them all, though, so there could be others.  This is not a documented feature of these two heroes.
 
 ## Specifying survivors
 
