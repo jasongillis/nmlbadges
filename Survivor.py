@@ -1,6 +1,7 @@
 
 import math
 import time
+from decimal import Decimal, ROUND_HALF_UP
 
 from typing import Any
 
@@ -103,7 +104,7 @@ class Survivor:
 
         damage_badge_bsts = 1.0 + self.get_badge_boost('D')
         # print(f'damage_badge_bsts = {damage_badge_bsts}')
-        # print(f'Damage Badges same set: {damage_badges * 1.2}')
+        # print(f'Damage Badges same set: {damage_badges_bsts * 1.2}')
 
         damage_incl_badges = damage_incl_traits * damage_badge_bsts
         # print(f'damage_incl_badges = {damage_incl_badges}')
@@ -147,6 +148,9 @@ class Survivor:
         badge_boost = 0.0
         for badge in self.badge_set.badges():
             if badge.type == type:
+                # if type == 'D':
+                #    print(f'Badge increase = {badge.pct_increase} - bonus = {badge.pct_bonus} - raw bonus = {badge.pct_increase * 0.25} ')
+
                 bonus_set_mult = 1.0
                 if self.badge_set.bonus_set() == badge.set:
                     bonus_set_mult = 1.2
@@ -154,11 +158,23 @@ class Survivor:
                 increase = badge.pct_increase
                 if badge.bonus_target in self.bonus_targets:
                     increase += badge.pct_bonus
-                    # Yumiko and Sasha seem to get an extra percentage
-                    # point added for max damage badges that have the
-                    # bonus activated.
-                    if ( self.name in ['Yumiko', 'Sasha'] and
-                         type == 'D' and badge.pct_increase >= 18 ):
+                    # Bonus % for badges is 25% of the base value
+                    # which is then ROUNDED UP.  However, in the game
+                    # GUI, the 25% value has floor() executed on it.
+                    # This means that for damage badges, 18% badges
+                    # will have a bonus of 4.5% that gets rounded up
+                    # to 5%.  It will only show 4% in the game.
+                    # Whoever thought of this was on something good.
+                    # https://discord.com/channels/564807390122475520/667463648041762856/1297250892550246412
+                    #
+                    # Here, we'll just add one to the increase value
+                    # to account for the rounded up increase.
+                    rounded_bonus_incr = Decimal(badge.pct_increase * 0.25).to_integral_value(rounding=ROUND_HALF_UP)
+                    # if type == 'D':
+                    #     print(f'pct_bonus = {badge.pct_bonus} ; actual = {rounded_bonus_incr}')
+                    if ( type == 'D' and
+                         rounded_bonus_incr > badge.pct_bonus ):
+                        # print(f'Adding 1% due to {badge.pct_increase}.')
                         increase += 1
 
                 badge_boost += ((increase / 100.0) * bonus_set_mult)
